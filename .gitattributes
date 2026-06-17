@@ -1,0 +1,11 @@
+# ix-ai-dlc — cross-platform line-ending normalization.
+# Store text as LF in the repo and check out LF on every OS, so a tool authored
+# on one platform (e.g. Windows/CRLF) stays consistent for contributors on macOS/Linux.
+* text=auto eol=lf
+
+# Treat these as binary (no EOL/encoding munging) if ever added.
+*.png binary
+*.jpg binary
+*.gif binary
+*.pdf binary
+*.ico binary

@@ -1,0 +1,10 @@
+# Machine-local / personal tooling config (absolute machine paths, local state)
+.claude/settings.local.json
+.claude/settings.json
+
+# Node tooling noise
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db

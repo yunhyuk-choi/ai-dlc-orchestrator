@@ -1,0 +1,3 @@
+# FRAMEWORK.md — 프레임워크 필수 패턴
+
+{FRAMEWORK_PATTERNS}
