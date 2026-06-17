@@ -14,7 +14,7 @@
 | 종류 | 형식·인터페이스 명세 문서 (에이전트 X) |
 | 실행 주체 | REPO-SETTER (설치·검증) / 오케스트레이터 (트리거·흡수·예외 전파) |
 | 참조 주체 | REPO-SETTER.md / `agents/orchestrator/ERROR-POLICY.md` §5 / `agents/orchestrator/ROUTING.md` §6 / `agents/orchestrator/DECISIONS.md` §4 |
-| 위치 | `ix-ai-dlc/specs/AWS-ADAPTER.md` |
+| 위치 | `ai-dlc-orchestrator/specs/AWS-ADAPTER.md` |
 
 **왜 어댑터인가**: 우리 시스템(시스템 레벨)과 AWS(레포 레벨) 사이 *번역·중개 레이어*. 양쪽 모두 자기 관습 유지하면서 통신 가능하도록.
 
@@ -90,7 +90,7 @@ REPO-SETTER가 설치 후 다음 항목 자체 체크:
 
 ### 4.1 위치 및 형식
 
-위치: `ix-ai-dlc/aws-aidlc-version.txt`
+위치: `ai-dlc-orchestrator/aws-aidlc-version.txt`
 
 형식 (단일 라인):
 ```
@@ -112,7 +112,7 @@ commit:a3f8c9d2b1e5...
 
 새 AWS 버전 적용 시:
 ```
-[1] ix-ai-dlc/aws-aidlc-version.txt 갱신 (PR/머지)
+[1] ai-dlc-orchestrator/aws-aidlc-version.txt 갱신 (PR/머지)
        ↓
 [2] EX-11 (외부 룰북 변경 감지) 트리거 — 오케스트레이터가 사용자에게 재로딩 컨펌
        ↓
@@ -297,7 +297,7 @@ EX-3 트리거 시 사용자 통지 표준:
 
 복구 방법:
 1. REPO-SETTER 재실행 — 영향 레포에 AWS 룰셋 재설치
-2. 또는 ix-ai-dlc/aws-aidlc-version.txt 핀 변경 (PR/머지 필요)
+2. 또는 ai-dlc-orchestrator/aws-aidlc-version.txt 핀 변경 (PR/머지 필요)
 
 현재 사이클은 ABORT됩니다. 위 복구 후 새 사이클로 재시작.
 ```
@@ -313,7 +313,7 @@ EX-3 트리거 시 사용자 통지 표준:
 | `agents/orchestrator/DECISIONS.md` §4 | §7 execution-plan.md 게이트 형식 본 명세 따름 |
 | `agents/orchestrator/ERROR-POLICY.md` §5 | §8 예외 전파 본격 명세 본 명세에 흡수 |
 | `specs/CYCLE-LOG.md` §9 | AWS audit 흡수 형식 본 명세 §6.3 따름 |
-| `ix-ai-dlc/aws-aidlc-version.txt` | §4 버전 핀 |
+| `ai-dlc-orchestrator/aws-aidlc-version.txt` | §4 버전 핀 |
 | `{각 레포}/aidlc-rules/*` | §3 설치 결과 |
 | `{각 레포}/aidlc-docs/*` | §6 흡수 대상 |
 | `awslabs/aidlc-workflows` (외부) | §2 원천 |

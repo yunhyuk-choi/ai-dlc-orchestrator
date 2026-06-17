@@ -4,7 +4,7 @@
 > Stage 1 `WORKFLOW.template.md`(레포 단위 기능 개발 워크플로우)를 *시스템 단위로 재포지셔닝*한 본문.
 > 워크플로우 *실행·라우팅*은 ORCHESTRATOR-AGENT 책임(§4 → ROUTING.md 위임). 본 문서는 *각 STEP의 의미·산출물·체크포인트*만 정의.
 > 변경은 깃 PR/머지 (원칙 8) — ROUTING.md §1·§3 / TERMINATION.md §1 / AWS-ADAPTER.md §7.2가 본 STEP 정의에 의존하므로 변경 시 영향 검토 필수.
-> 위치: `ix-ai-dlc/specs/SYSTEM-WORKFLOW.md`
+> 위치: `ai-dlc-orchestrator/specs/SYSTEM-WORKFLOW.md`
 
 ---
 
@@ -17,7 +17,7 @@
 | 참조 주체 | `agents/orchestrator/ROUTING.md` §1·§3 / `TERMINATION.md` §1 / `specs/AWS-ADAPTER.md` §7.2 / `specs/CYCLE-LOG.md` (STEP↔PROGRESS) |
 | 원천 | Stage 1 `WORKFLOW.template.md` + AWS-ADAPTER §7.2 STEP↔AWS 매핑 |
 | 동반 문서 | `DESIGN`(시스템 레벨 재포지셔닝) / `STACK`(시스템 레벨 재포지셔닝) / `CHECKLIST·CODING·FRAMEWORK`(AWS Extension 변환) |
-| 위치 | `ix-ai-dlc/specs/SYSTEM-WORKFLOW.md` |
+| 위치 | `ai-dlc-orchestrator/specs/SYSTEM-WORKFLOW.md` |
 
 **왜 에이전트가 아닌가**: 워크플로우는 *룰·형식*이고, 그 룰에 따라 STEP을 선택·실행·반복하는 *행위*는 오케스트레이터 책임. 본 문서는 ROUTING.md가 런타임에 참조하는 *STEP 카탈로그 단일 원천*.
 

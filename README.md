@@ -1,12 +1,12 @@
-# ix-ai-dlc
+# ai-dlc-orchestrator
 
 > **자연어 지시 하나로, 여러 레포에 걸친 AI 주도 개발을 조율하는 깃 관리형 공유 룰북.**
 >
 > *An adaptive, project-agnostic multi-agent orchestration framework — drive multi-repo AI development with a single natural-language instruction.*
 
-ix-ai-dlc는 **특정 프로젝트·스택·OS에 묶이지 않는 범용 멀티 에이전트 오케스트레이션 프레임워크**다. 프레임워크의 모든 규칙은 깃 리포 안의 마크다운 파일로, 버전 관리되고 PR로 진화한다. 직접 코딩하는 도구가 아니라, 레포별 AI 워크플로우를 **지휘하는 상위 레이어**다.
+ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범용 멀티 에이전트 오케스트레이션 프레임워크**다. 프레임워크의 모든 규칙은 깃 리포 안의 마크다운 파일로, 버전 관리되고 PR로 진화한다. 직접 코딩하는 도구가 아니라, 레포별 AI 워크플로우를 **지휘하는 상위 레이어**다.
 
-> 더 자세한 소개·배경·멘탈 모델은 **[ix-ai-dlc-overview.md](ix-ai-dlc-overview.md)** 를 참고. 이 README는 그 문서를 *대체하지 않고 보완*하며, 깊이가 필요한 곳마다 링크한다.
+> 더 자세한 소개·배경·멘탈 모델은 **[ai-dlc-orchestrator-overview.md](ai-dlc-orchestrator-overview.md)** 를 참고. 이 README는 그 문서를 *대체하지 않고 보완*하며, 깊이가 필요한 곳마다 링크한다.
 
 ---
 
@@ -14,7 +14,7 @@ ix-ai-dlc는 **특정 프로젝트·스택·OS에 묶이지 않는 범용 멀티
 
 **문제.** AI 코딩 도구는 대개 *레포 하나* 안에서만 잘 동작한다. 그런데 실제 제품은 프론트·백엔드·인프라 등 *여러 레포*에 걸쳐 있고, 그 사이의 인터페이스·의존 관계·통합·일관성은 사람이 직접 챙겨야 한다. "이 기능 만들어줘"라고 하면 한 레포는 잘 만들어도, 레포 경계를 넘는 조율은 빠진다.
 
-**해법.** ix-ai-dlc는 그 *시스템 레벨 조율*을 담당한다. 사용자는 자연어로 한 번 지시하고, 시스템이 한 사이클로 끌고 간다:
+**해법.** ai-dlc-orchestrator는 그 *시스템 레벨 조율*을 담당한다. 사용자는 자연어로 한 번 지시하고, 시스템이 한 사이클로 끌고 간다:
 
 - **분해** — 어느 레포들이 연관되는지, 의존 그래프는 어떤지 매핑한다.
 - **cross-repo 설계** — 레포 사이의 계약(인터페이스·결합점·데이터 흐름)을 설계한다.
@@ -41,7 +41,7 @@ ix-ai-dlc는 **특정 프로젝트·스택·OS에 묶이지 않는 범용 멀티
         사용자 (고객)
            │  자연어 지시 한 번
            ▼
-   오케스트레이터 (팀장)          ← ix-ai-dlc · 시스템 레벨 · STEP 0~10
+   오케스트레이터 (팀장)          ← ai-dlc-orchestrator · 시스템 레벨 · STEP 0~10
            │  분해 · 설계 후 레포별 위탁
    ┌───────┼───────┐
    ▼       ▼       ▼
@@ -55,7 +55,7 @@ ix-ai-dlc는 **특정 프로젝트·스택·OS에 묶이지 않는 범용 멀티
 | **오케스트레이터** | **팀장** | 시스템 레벨 조율 (STEP 0~10). 사용자는 *팀장하고만* 대화 |
 | 서브 에이전트 / 레포별 AWS | 팀원 | 팀장을 통해서만 움직임 |
 
-사용자는 창구 하나(팀장)만 상대하면 된다. 나머지 협업은 내부에서 처리된다. 구조에 대한 깊이 있는 설명은 **[overview §2](ix-ai-dlc-overview.md#2-핵심-아이디어-구조)** 참고.
+사용자는 창구 하나(팀장)만 상대하면 된다. 나머지 협업은 내부에서 처리된다. 구조에 대한 깊이 있는 설명은 **[overview §2](ai-dlc-orchestrator-overview.md#2-핵심-아이디어-구조)** 참고.
 
 ---
 
@@ -65,8 +65,8 @@ ix-ai-dlc는 **특정 프로젝트·스택·OS에 묶이지 않는 범용 멀티
 
 1. **클론**
    ```sh
-   git clone <ix-ai-dlc-repo-url>
-   cd ix-ai-dlc
+   git clone <ai-dlc-orchestrator-repo-url>
+   cd ai-dlc-orchestrator
    ```
 
 2. **에이전트로 열기** — 이 리포를 에이전트 런타임(예: Claude Code)에서 연다. 루트의 **[`CLAUDE.md`](CLAUDE.md)** 가 세션 시작 시 자동으로 읽혀 오케스트레이터(팀장) 정체성을 부트스트랩한다. 갓 클론한 리포도 이 파일 하나로 자력 시작한다.
@@ -83,7 +83,7 @@ ix-ai-dlc는 **특정 프로젝트·스택·OS에 묶이지 않는 범용 멀티
 
 ## 리포 구조
 
-모든 것이 마크다운 룰 파일이다. 전체 분해는 **[overview §3](ix-ai-dlc-overview.md#3-무엇을-만들고-있나-구성물)** 참고.
+모든 것이 마크다운 룰 파일이다. 전체 분해는 **[overview §3](ai-dlc-orchestrator-overview.md#3-무엇을-만들고-있나-구성물)** 참고.
 
 - **[`agents/`](agents/) — 행위 주체(에이전트) 룰북**
   - [`orchestrator/`](agents/orchestrator/) — 팀장. 코어 [`ORCHESTRATOR-AGENT.md`](agents/orchestrator/ORCHESTRATOR-AGENT.md) + 디테일 4개(`ROUTING` · `DECISIONS` · `ERROR-POLICY` · `TERMINATION`)
@@ -142,7 +142,7 @@ ix-ai-dlc는 **특정 프로젝트·스택·OS에 묶이지 않는 범용 멀티
 
 ## 더 보기
 
-- **[ix-ai-dlc-overview.md](ix-ai-dlc-overview.md)** — 더 깊은 소개·배경·멘탈 모델
+- **[ai-dlc-orchestrator-overview.md](ai-dlc-orchestrator-overview.md)** — 더 깊은 소개·배경·멘탈 모델
 - **[CLAUDE.md](CLAUDE.md)** — 세션 진입점(부트스트랩) · 퀵스타트가 가리키는 곳
 - **[specs/SYSTEM-WORKFLOW.md](specs/SYSTEM-WORKFLOW.md)** — STEP 0~10 + 공통 정책 정본
 - **[agents/orchestrator/ORCHESTRATOR-AGENT.md](agents/orchestrator/ORCHESTRATOR-AGENT.md)** — 오케스트레이터 코어 룰북

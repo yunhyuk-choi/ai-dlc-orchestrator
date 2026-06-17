@@ -2,7 +2,7 @@
 
 > ORCHESTRATOR-AGENT.md §5의 본문.
 > 분기점 카탈로그 DP-1~10, 사용자 컨펌 기준, 결정 기록 형식, execution-plan.md 게이트.
-> 위치: `ix-ai-dlc/agents/orchestrator/DECISIONS.md`
+> 위치: `ai-dlc-orchestrator/agents/orchestrator/DECISIONS.md`
 > 로딩 시점: 분기점 도달 시
 
 ---

@@ -2,7 +2,7 @@
 
 > AWS AI-DLC Extension — `framework/{name}`. 각 레포 Construction(Code Generation) 시점 프레임워크 패턴.
 > 적용·검증·버전 정합은 REPO-SETTER RP6 + AWS-ADAPTER §4가 담당 (본 파일은 중복 명세 안 함 — 원칙 6).
-> 위치(공유 룰북): `ix-ai-dlc/templates/extensions/framework/framework.template.md`
+> 위치(공유 룰북): `ai-dlc-orchestrator/templates/extensions/framework/framework.template.md`
 
 | 메타 | 값 |
 |---|---|

@@ -2,7 +2,7 @@
 
 > 시스템 운영 중 DP-7(추가 레포 필요 판단) 시 오케스트레이터가 호출하는 서브 에이전트.
 > 핵심: 신규 레포 디렉토리·git 생성 + REPO-MAP 갱신. REPO-SETTER 호출은 *오케스트레이터 책임*.
-> 위치: `ix-ai-dlc/agents/REPO-CREATOR.md`
+> 위치: `ai-dlc-orchestrator/agents/REPO-CREATOR.md`
 
 ---
 
@@ -26,7 +26,7 @@
 [오케스트레이터가 REPO-SETTER 호출 — Layer 2 셋업]
 ```
 
-`{공유리포}` = 클론된 `ix-ai-dlc/` 디렉토리 절대 경로.
+`{공유리포}` = 클론된 `ai-dlc-orchestrator/` 디렉토리 절대 경로.
 `{메타 레포}` = `dlc-meta/` (SETTER가 부트스트랩한 위치).
 
 ---
@@ -39,7 +39,7 @@
 | 호출 주체 | 오케스트레이터 (DP-7 결정 + 사용자 컨펌 후) |
 | 수명 | 신규 레포 1개당 1회 |
 | 사용자 채널 | 직접 통신 없음. 인터뷰는 *오케스트레이터를 통한다* |
-| 위치 | `ix-ai-dlc/agents/REPO-CREATOR.md` |
+| 위치 | `ai-dlc-orchestrator/agents/REPO-CREATOR.md` |
 
 ---
 
@@ -82,7 +82,7 @@
 
 | 필드 | 내용 |
 |---|---|
-| `{공유리포}` 절대 경로 | 클론된 `ix-ai-dlc/` |
+| `{공유리포}` 절대 경로 | 클론된 `ai-dlc-orchestrator/` |
 | `{메타 레포}` 절대 경로 | `dlc-meta/` |
 | 트리거 이유 | DP-7 결정 근거 — 도메인 미스매치 / 신규 도메인 발생 등 |
 | 사용자 컨펌 응답 | DP-7 사용자 컨펌 시점의 응답 (이름·도메인 후보 포함 가능) |

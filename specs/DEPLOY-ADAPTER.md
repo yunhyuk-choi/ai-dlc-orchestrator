@@ -6,7 +6,7 @@
 > 본 명세는 **조건부** 다 — 레포·시스템이 *실제로 실행 환경에 배포할 때만* 발동하고(§1), 없으면 비활성(inert)이다.
 > 도구·기술 명칭(IaC 도구·클라우드 CLI·플랫폼 파이프라인·오케스트레이터·서버리스 등)은 모두 *예시(e.g.)* 일 뿐 요구사항이 아니다. 프로젝트·OS·플랫폼에 맞는 동치 수단으로 대체한다.
 > 변경은 깃 PR/머지 (원칙 8) — `specs/CICD-RELEASE-ADAPTER.md`(POLICY-RELEASE) / `specs/VERIFICATION.md`(POLICY-VERIFY) / `agents/orchestrator/DECISIONS.md` §5(A-4·A-5) / `agents/orchestrator/ERROR-POLICY.md` EX-13·EX-14 / `templates/REPO-MAP.template.md` `{REPO_PROFILES}` / `specs/SYSTEM-WORKFLOW.md`(착지 시퀀스)가 본 명세에 연계되므로 변경 시 영향 검토 필수.
-> 위치: `ix-ai-dlc/specs/DEPLOY-ADAPTER.md`
+> 위치: `ai-dlc-orchestrator/specs/DEPLOY-ADAPTER.md`
 
 > **POLICY-DEPLOY (실행 환경 배포)** — 레포·시스템이 실행 환경에 배포할 때(조건부 발동), 배포는 *환경 모델(낮은 → 높은 티어 승격) + 레포가 포착한 방식에 적응하는 배포 전략* 을 따른다. **non-prod 환경은 에이전트 자율 배포 가능, production(또는 비가역·고영향 타깃)은 사람 게이트(A-4)** — 에이전트는 준비·검증하되 prod 트리거는 *사람의 명시적 승인 후에만*(일반 "계속/진행"은 prod 포괄 승인 아님). 모든 배포는 *실행 환경에 대한 배포 후 지상검증(헬스·스모크, POLICY-VERIFY)* 으로 확인하고, 검증 실패 시 *최종 정상 상태로 자동 롤백*(non-prod 자율 / prod는 복구를 안전 기본값으로 진행하되 사람에게 에스컬레이트)한다. 배포 자격증명·권한 발급은 *사람 게이트*(EX-13).
 
@@ -20,7 +20,7 @@
 | 실행 주체 | `DEPLOY-AGENT`(배포 준비·실행·검증·롤백 수행 — 별도 피어 에이전트) / 오케스트레이터(게이트 인식·prod 승인 조율·검증 트리거) |
 | 참조 주체 | `specs/CICD-RELEASE-ADAPTER.md`(POLICY-RELEASE) / `specs/VERIFICATION.md`(POLICY-VERIFY) / `agents/orchestrator/DECISIONS.md` §5(A-4·A-5) / `agents/orchestrator/ERROR-POLICY.md`(EX-13·EX-14) / `templates/REPO-MAP.template.md`(`{REPO_PROFILES}`) |
 | 라벨 | **POLICY-DEPLOY** (다른 파일이 본 배포 규율을 이 라벨로 인용) |
-| 위치 | `ix-ai-dlc/specs/DEPLOY-ADAPTER.md` |
+| 위치 | `ai-dlc-orchestrator/specs/DEPLOY-ADAPTER.md` |
 
 **릴리스와의 경계**: `CICD-RELEASE-ADAPTER`(POLICY-RELEASE)는 *"산출물 퍼블리시 + 레지스트리 존재 검증"* 에서 멈춘다. 본 명세는 그 *검증된 산출물을 실행 중인 환경에 올리는* 다음 단계 — 생명주기의 후반부 — 를 규율한다. 둘은 핸드오프로 연결된다(§10).
 

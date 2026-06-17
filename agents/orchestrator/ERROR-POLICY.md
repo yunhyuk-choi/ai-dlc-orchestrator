@@ -2,7 +2,7 @@
 
 > ORCHESTRATOR-AGENT.md §6의 본문.
 > 책임 아닌 *횡단 정책* — 모든 단계에서 적용 (D-Stage2-9, c-3 선택).
-> 위치: `ix-ai-dlc/agents/orchestrator/ERROR-POLICY.md`
+> 위치: `ai-dlc-orchestrator/agents/orchestrator/ERROR-POLICY.md`
 > 로딩 시점: 예외 감지 시
 > **이 파일은 공유 룰북의 *디폴트* (전 프로젝트 공통, 불가침).** 프로젝트별 (EX, 레포) 특화는 DP-9(신호 ③)이 `dlc-meta/ORCHESTRATOR.md` *예외 오버라이드*에 쌓음 — 디폴트 위에 얹히며, 진화가 이 공유 파일을 건드리지 않음 (D-Stage3-6).
 
@@ -58,7 +58,7 @@ A는 *항상 1회만*. 무한 재시도 X.
 
 | 항목 | 내용 |
 |---|---|
-| 감지 | `ix-ai-dlc/aws-aidlc-version.txt` 핀 ↔ 실제 `aidlc-rules/` 룰셋 mismatch |
+| 감지 | `ai-dlc-orchestrator/aws-aidlc-version.txt` 핀 ↔ 실제 `aidlc-rules/` 룰셋 mismatch |
 | 정책 | **E ABORT + AWS-ADAPTER 재설치 안내** |
 | 사용자 통지 | 항상 |
 | 복구 시나리오 | 사용자에게 `REPO-SETTER` 재실행 안내 (룰셋 재설치). 사이클 종료 후 재시작 |
@@ -138,7 +138,7 @@ A는 *항상 1회만*. 무한 재시도 X.
 
 | 항목 | 내용 |
 |---|---|
-| 감지 | 깃 PR 머지 신호 / 룰북 hash 변경 / `ix-ai-dlc/` 또는 `aws-aidlc-version.txt` 갱신 |
+| 감지 | 깃 PR 머지 신호 / 룰북 hash 변경 / `ai-dlc-orchestrator/` 또는 `aws-aidlc-version.txt` 갱신 |
 | 정책 | **B ASK + 재로딩 컨펌** |
 | 사용자 통지 | 항상 |
 | 복구 시나리오 | 사용자에게 변경 사항 요약 + 재로딩 컨펌 요청 |
@@ -228,14 +228,14 @@ dlc-meta/cycles/{cycle-id}/audit.md
 ### 4.2 채움 주체 — HANDOFF-WRITER 서브 에이전트
 
 - 원칙 1(호출 시점·책임 다르면 분리) 정합 — 핸드오프 작성은 *드물고 큰 컨텍스트 작업*
-- 위치: `ix-ai-dlc/agents/HANDOFF-WRITER.md` (룰북)
+- 위치: `ai-dlc-orchestrator/agents/HANDOFF-WRITER.md` (룰북)
 - 호출 방식: 오케스트레이터가 EX-9 트리거 감지 시 호출
 - 입력: 현재 사이클 상태 + audit.md 누적 + 트리거 사유
 - 반환: 4-튜플 (표준 — `(생성 파일 경로[], 정합성 체크, 인터뷰 응답 원본, 권고 다음 단계)`)
 
 ### 4.3 자동 생성 포맷
 
-`ix-ai-dlc/templates/HANDOFF.template.md` 변수 구조 (별도 산출물).
+`ai-dlc-orchestrator/templates/HANDOFF.template.md` 변수 구조 (별도 산출물).
 
 필수 섹션 (현재 정의):
 - 메타 (버전, 작성일, 트리거 사유, 응답 언어)

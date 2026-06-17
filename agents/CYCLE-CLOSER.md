@@ -2,8 +2,8 @@
 
 > 오케스트레이터가 사이클 종료 판단(DP-8) 시 호출하는 서브 에이전트 룰북.
 > 핵심: audit.md 최종화 + AWS audit 스냅샷 흡수 + 사용자 보고 데이터 준비.
-> 위치: `ix-ai-dlc/agents/CYCLE-CLOSER.md`
-> 호출 흐름·종료 신호 본문은 `ix-ai-dlc/agents/orchestrator/TERMINATION.md` §4 참조.
+> 위치: `ai-dlc-orchestrator/agents/CYCLE-CLOSER.md`
+> 호출 흐름·종료 신호 본문은 `ai-dlc-orchestrator/agents/orchestrator/TERMINATION.md` §4 참조.
 
 ---
 
@@ -38,7 +38,7 @@
 | 호출 주체 | 오케스트레이터 (DP-8 결정 후) |
 | 수명 | 사이클당 1회. 종료 후 컨텍스트 해제 |
 | 사용자 채널 | 직접 통신 없음. 보고는 오케스트레이터 통해 |
-| 위치 | `ix-ai-dlc/agents/CYCLE-CLOSER.md` |
+| 위치 | `ai-dlc-orchestrator/agents/CYCLE-CLOSER.md` |
 
 ---
 

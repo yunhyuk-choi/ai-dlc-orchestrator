@@ -84,4 +84,4 @@
 - **작은 단위**: `{CYCLE_ID}` / `{CYCLE_INTENT}` / `{AFFECTED_REPOS}` / `{CLOSE_REASON}` / `{DEPTH}` / `{WRITTEN_AT}`
 - **블록 단위**: `{WHAT_WORKED}` / `{WHAT_FAILED}` / `{RULEBOOK_GAPS}` / `{ENV_GOTCHAS}` / `{VERIFICATION_MISSES}` / `{PROPOSED_RULEBOOK_CHANGES}`
 
-채움 데이터 소스(audit.md entry)·라우팅 절차는 `ix-ai-dlc/agents/orchestrator/TERMINATION.md` §4.4, 진화 소비는 `ix-ai-dlc/specs/EVOLUTION.md` §3.E 참조.
+채움 데이터 소스(audit.md entry)·라우팅 절차는 `ai-dlc-orchestrator/agents/orchestrator/TERMINATION.md` §4.4, 진화 소비는 `ai-dlc-orchestrator/specs/EVOLUTION.md` §3.E 참조.

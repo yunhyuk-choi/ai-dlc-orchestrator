@@ -1,4 +1,4 @@
-# ix-ai-dlc — cross-platform line-ending normalization.
+# ai-dlc-orchestrator — cross-platform line-ending normalization.
 # Store text as LF in the repo and check out LF on every OS, so a tool authored
 # on one platform (e.g. Windows/CRLF) stays consistent for contributors on macOS/Linux.
 * text=auto eol=lf

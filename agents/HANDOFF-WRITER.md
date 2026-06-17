@@ -1,8 +1,8 @@
 # HANDOFF-WRITER.md — 핸드오프 문서 생성 서브 에이전트 룰북
 
 > EX-9 (컨텍스트 한도 임박) 또는 명시 요청 시 오케스트레이터가 호출하는 서브 에이전트.
-> 본 룰북은 `ix-ai-dlc/agents/HANDOFF-WRITER.md`에 위치.
-> 동작 정책 본문은 `ix-ai-dlc/agents/orchestrator/ERROR-POLICY.md` §4 참조.
+> 본 룰북은 `ai-dlc-orchestrator/agents/HANDOFF-WRITER.md`에 위치.
+> 동작 정책 본문은 `ai-dlc-orchestrator/agents/orchestrator/ERROR-POLICY.md` §4 참조.
 
 ---
 
@@ -14,7 +14,7 @@
 | 호출 주체 | 오케스트레이터 에이전트 (직접 호출 불가) |
 | 수명 | 호출당 1회. 산출 후 컨텍스트 해제 |
 | 트리거 | EX-9 (컨텍스트 한도 임박) / 사용자 명시 요청 / 사이클 종료 시 옵션 / 수동 안전 백업 |
-| 위치 | `ix-ai-dlc/agents/HANDOFF-WRITER.md` |
+| 위치 | `ai-dlc-orchestrator/agents/HANDOFF-WRITER.md` |
 | 사용자 채널 | 직접 통신 없음. 결과는 오케스트레이터 통해 사용자에게 전달 |
 
 ---
@@ -107,7 +107,7 @@
 
 ### W3 — 변수 매핑
 
-**먼저 `ix-ai-dlc/templates/HANDOFF.template.md`(현재 기본 브랜치의 것)를 통째로 로드한다** (POLICY-TEMPLATE-ADHERENCE). 산출물은 이 템플릿 본문에서 *생성*하며, 템플릿의 모든 섹션(메타·§1~§9·부록)과 변수 자리(`{...}`)를 그대로 보존한 채 값만 치환한다. 템플릿을 무시하고 핸드오프를 자유 형식으로 손수 작성하는 것은 *결함*이다.
+**먼저 `ai-dlc-orchestrator/templates/HANDOFF.template.md`(현재 기본 브랜치의 것)를 통째로 로드한다** (POLICY-TEMPLATE-ADHERENCE). 산출물은 이 템플릿 본문에서 *생성*하며, 템플릿의 모든 섹션(메타·§1~§9·부록)과 변수 자리(`{...}`)를 그대로 보존한 채 값만 치환한다. 템플릿을 무시하고 핸드오프를 자유 형식으로 손수 작성하는 것은 *결함*이다.
 
 `HANDOFF.template.md`의 변수를 채움. 매핑표:
 
@@ -199,7 +199,7 @@ mkdir -p dlc-meta/cycles/{cycle-id}
 
 | 인스턴스 | 템플릿 위치 |
 |---|---|
-| `dlc-meta/cycles/{cycle-id}/handoff-v{n}.md` | `ix-ai-dlc/templates/HANDOFF.template.md` |
+| `dlc-meta/cycles/{cycle-id}/handoff-v{n}.md` | `ai-dlc-orchestrator/templates/HANDOFF.template.md` |
 
 템플릿 본문 변경은 *깃 PR/머지*로만 (원칙 8). 본 에이전트는 *항상 현재 main의 템플릿*을 읽어 인스턴스를 채운다.
 

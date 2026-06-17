@@ -2,7 +2,7 @@
 
 > 시스템 단위 핸드오프 문서의 *단일 원천* (원칙 6).
 > EX-9 트리거 시 HANDOFF-WRITER가 본 템플릿을 채워 `dlc-meta/cycles/{cycle-id}/handoff-v{n}.md`로 산출.
-> 변수 채움 매핑·실행 절차는 `ix-ai-dlc/agents/HANDOFF-WRITER.md` 본문 참조.
+> 변수 채움 매핑·실행 절차는 `ai-dlc-orchestrator/agents/HANDOFF-WRITER.md` 본문 참조.
 > 본 템플릿은 변경 시 깃 PR/머지 (원칙 8).
 
 ---
@@ -126,4 +126,4 @@ Claude는 응답으로:
 - **작은 단위** (단일 값): `{VERSION}` / `{WRITTEN_DATE}` / `{PREVIOUS_VERSION}` / `{TRIGGER_REASON}` / `{RESPONSE_LANGUAGE}` / `{USER_PREFERENCES}` / `{SYSTEM_NAME}` / `{LATEST_CHANGE_SUMMARY}`
 - **블록 단위** (섹션 채움): `{PROJECT_IDENTITY}` / `{CORE_DECISIONS_RETAINED}` / `{LATEST_DECISION_HIGHLIGHT}` / `{PROGRESS_STATUS}` / `{NEXT_ACTION_GUIDE}` / `{QUEUE}` / `{DECISION_LOG_TABLE}` / `{NEW_SESSION_FIRST_MESSAGE}` / `{CLAUDE_RESPONSE_GUIDE}` / `{REQUIRED_ATTACHMENTS}`
 
-채움 데이터 소스 매핑·실행 절차는 `ix-ai-dlc/agents/HANDOFF-WRITER.md` 본문에서 본격 명세.
+채움 데이터 소스 매핑·실행 절차는 `ai-dlc-orchestrator/agents/HANDOFF-WRITER.md` 본문에서 본격 명세.

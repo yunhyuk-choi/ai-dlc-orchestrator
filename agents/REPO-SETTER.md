@@ -2,7 +2,7 @@
 
 > SETTER 또는 REPO-CREATOR가 호출하는 서브 에이전트 룰북.
 > 각 레포 1회 — `.claude/CLAUDE.md` 생성 + AWS 룰셋 설치 + 정합성 검증.
-> 위치: `ix-ai-dlc/agents/REPO-SETTER.md`
+> 위치: `ai-dlc-orchestrator/agents/REPO-SETTER.md`
 
 ---
 
@@ -24,7 +24,7 @@
 [오케스트레이터에 4-튜플 보고]
 ```
 
-`{공유리포}` = 클론된 `ix-ai-dlc/` 디렉토리 절대 경로. 오케스트레이터가 전달.
+`{공유리포}` = 클론된 `ai-dlc-orchestrator/` 디렉토리 절대 경로. 오케스트레이터가 전달.
 
 ---
 
@@ -36,7 +36,7 @@
 | 호출 주체 | 오케스트레이터 (SETTER 또는 REPO-CREATOR 다음 흐름) |
 | 수명 | 레포 단위 **1회**. 추가 레포는 REPO-CREATOR → REPO-SETTER 흐름 |
 | 사용자 채널 | 직접 통신 없음. 모든 인터뷰는 *오케스트레이터를 통한다* |
-| 위치 | `ix-ai-dlc/agents/REPO-SETTER.md` |
+| 위치 | `ai-dlc-orchestrator/agents/REPO-SETTER.md` |
 
 ---
 
@@ -49,7 +49,7 @@
 3. `{레포}/.claude/CLAUDE.md` 생성 (`CLAUDE.template.md` 채움) + **repo-scope 동반 템플릿(`STACK`/`CODING`/`FRAMEWORK`) materialize**
 4. AWS 룰셋 설치 — `AWS-ADAPTER.md §3` 절차 따름
 5. `{레포}/aidlc-docs/` 빈 디렉토리 생성 (AWS 산출물 영역)
-6. (조건부) Stage 1 산출물 Extension 적용 — *변환된 extension 템플릿이 `ix-ai-dlc/templates/extensions/`에 준비된 경우만*
+6. (조건부) Stage 1 산출물 Extension 적용 — *변환된 extension 템플릿이 `ai-dlc-orchestrator/templates/extensions/`에 준비된 경우만*
 7. (조건부) 보유 시 레포 프로파일을 **REPO-MAP `{REPO_PROFILES}`** 해당 슬러그 서브섹션에 기록 (자격증명은 *이름·스코프만*, 값 금지)
 8. (조건부) CI/CD 보유·필요로 판정되면 **CICD-SETTER 호출을 오케스트레이터에 권고·요청** (CI/CD 부착·통합 *실행* — 본 에이전트는 기록만 하지 않고 실행 주체 호출을 권고; 원칙 7 — 직접 피어 호출 X)
 9. 정합성 자체 체크 + **공유 산출물 깃 트래킹(POLICY-TRACKING)** + 오케스트레이터에 4-튜플 보고
@@ -87,7 +87,7 @@
 | 필드 | 내용 |
 |---|---|
 | 트리거 출처 | SETTER 다음 / REPO-CREATOR 다음 |
-| `{공유리포}` 절대 경로 | 클론된 `ix-ai-dlc/` |
+| `{공유리포}` 절대 경로 | 클론된 `ai-dlc-orchestrator/` |
 | 대상 레포 절대 경로 | `{레포 경로}` |
 | 레포 슬러그 | `REPO-MAP.md`의 레포 식별자 |
 | 레포 메타 (기본) | 역할 / 도메인 / 의존 — REPO-MAP에서 파생 |

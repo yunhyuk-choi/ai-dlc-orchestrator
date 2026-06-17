@@ -7,14 +7,14 @@
 
 ## 0. 컨텍스트 — 배포 모델 & 디렉토리 구조
 
-본 시스템은 *사내 공유 깃 리포지토리* `ix-ai-dlc`로 배포된다. 팀원은 클론으로 모든 룰북/템플릿을 받고, 자기 환경에서 에이전트를 실행한다. 명세는 *환경 중립* — 로컬 / Codespaces / AWS 어디서든 동작.
+본 시스템은 *사내 공유 깃 리포지토리* `ai-dlc-orchestrator`로 배포된다. 팀원은 클론으로 모든 룰북/템플릿을 받고, 자기 환경에서 에이전트를 실행한다. 명세는 *환경 중립* — 로컬 / Codespaces / AWS 어디서든 동작.
 
 **메타 레포(`dlc-meta`)는 팀 공유 원격**(D-Stage4-1) — 인스턴스 config(ORCHESTRATOR.md·REPO-MAP.md)와 사이클 로그가 팀원 간 공유된다. 첫 부트스트랩(신규)이 원격을 만들고, 이후 팀원은 *합류(clone)*. **시크릿(GitLab 토큰·Figma 키 등)은 dlc-meta에 넣지 않는다** — 머신별 로컬 `.env`(gitignore)에만. 공유되는 건 값 없는 `.env.example` 매니페스트뿐.
 
 ```
-ix-ai-dlc/                         ← 사내 공유 깃 리포지토리 (클론으로 받음)
+ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토리 (클론으로 받음)
 ├── CLAUDE.md
-├── ix-ai-dlc-overview.md
+├── ai-dlc-orchestrator-overview.md
 ├── aws-aidlc-version.txt
 ├── .gitattributes
 ├── agents/                        ← 행위 주체(에이전트) 룰북
@@ -62,7 +62,7 @@ ix-ai-dlc/                         ← 사내 공유 깃 리포지토리 (클론
 {Q2.2}/{Q2.1}/.env                 ← 시크릿 값 (GitLab 토큰·Figma 키 등). 사용자가 채움. gitignore.
 ```
 
-본 명세에서 `{공유리포}`는 *클론된 `ix-ai-dlc/` 디렉토리의 절대 경로*를 의미. 오케스트레이터가 이 경로를 SETTER에 전달한다.
+본 명세에서 `{공유리포}`는 *클론된 `ai-dlc-orchestrator/` 디렉토리의 절대 경로*를 의미. 오케스트레이터가 이 경로를 SETTER에 전달한다.
 
 ---
 
@@ -118,7 +118,7 @@ ix-ai-dlc/                         ← 사내 공유 깃 리포지토리 (클론
 ### 입력 (오케스트레이터로부터)
 
 - 트리거 신호 — "시스템 부트스트랩 필요" 판단
-- `{공유리포}` 절대 경로 (클론된 `ix-ai-dlc/`)
+- `{공유리포}` 절대 경로 (클론된 `ai-dlc-orchestrator/`)
 - 사용자 인터뷰 응답 (Q2.x ~ Q5.x)
 
 ### 출력 (오케스트레이터에 보고)

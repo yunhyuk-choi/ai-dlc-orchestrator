@@ -5,7 +5,7 @@
 > 배포 *룰·전략 정의* 본문은 `specs/DEPLOY-ADAPTER.md`(**POLICY-DEPLOY**)에 위임. 본 룰북은 그 룰을 *실행* 한다.
 > 본 에이전트는 **조건부** — 레포/시스템이 *실제로 배포할 때만* 관련된다(배포 표면이 없는 레포·프로젝트도 정상).
 > 도구·기술 명칭(IaC apply·플랫폼 deploy·헬스 엔드포인트 등)은 모두 *예시(e.g.)* 일 뿐 요구사항이 아니다. 프로젝트·OS에 맞는 동치 수단으로 대체한다.
-> 위치: `ix-ai-dlc/agents/DEPLOY-AGENT.md`
+> 위치: `ai-dlc-orchestrator/agents/DEPLOY-AGENT.md`
 
 ---
 
@@ -43,7 +43,7 @@
 | 수명 | **레포/환경 단위** 호출. 한 사이클에서 다수 환경 배포 시 환경마다 호출될 수 있음. 종료 후 컨텍스트 해제 |
 | 사용자 채널 | 직접 통신 없음. production 사람 게이트(A-4) 승인 요청·배포 보고 모두 *오케스트레이터를 통한다* |
 | 조건성 | **조건부** — 레포/시스템이 실제로 배포할 때만 관련. deploy 프로파일이 없으면 본 에이전트는 비활성(호출 자체가 일어나지 않음) |
-| 위치 | `ix-ai-dlc/agents/DEPLOY-AGENT.md` |
+| 위치 | `ai-dlc-orchestrator/agents/DEPLOY-AGENT.md` |
 
 ---
 

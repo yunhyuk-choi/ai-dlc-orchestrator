@@ -3,7 +3,7 @@
 > **이 문서는 형식·룰 명세 문서.** 에이전트 룰북 아님.
 > DP-9(진화·메타 능동 제안)의 *휴리스틱 본문* — 어떤 행동 패턴을 감지해 룰북 갱신을 능동 제안할지.
 > DECISIONS.md DP-9이 본 문서로 위임 (D-Stage3-1). 입력 데이터 형식은 CYCLE-LOG §2.1(`index.md`) 위임.
-> 위치: `ix-ai-dlc/specs/EVOLUTION.md`
+> 위치: `ai-dlc-orchestrator/specs/EVOLUTION.md`
 
 ---
 
@@ -16,10 +16,10 @@
 | 입력 | `cycles/index.md` 행동 롤업 (CYCLE-LOG §2.1) + 각 사이클 `audit.md` (원시 확인용) + **사이클별 회고 `cycles/{cycle-id}/retrospective.md`** (TERMINATION §4.4 산출 — 서술적 신호, §3.E) |
 | 출력 | 진화 제안 (사용자 컨펌 → 승인 시 **`dlc-meta` 인스턴스 갱신 + 루틴 커밋**, D-Stage3-6) |
 | 비입력 | **ORCHESTRATOR.md / 템플릿은 입력 아님** — 패턴은 런타임 행동(로그)에서만 (관심사 분리, D-Stage3-1) |
-| 위치 | `ix-ai-dlc/specs/EVOLUTION.md` |
+| 위치 | `ai-dlc-orchestrator/specs/EVOLUTION.md` |
 
 **관심사 분리**: *감지 입력* = 로그 레이어(행동 누적). *적용 결과* = **`dlc-meta` 인스턴스 갱신** (오케스트레이터 config·REPO-MAP — 프로젝트 로컬). 입력과 결과를 섞지 않음.
-**공유 룰북 불가침 (D-Stage3-6)**: 진화는 *프로젝트 인스턴스(`dlc-meta`)에만* 적용. 클론된 공유 `ix-ai-dlc`(DECISIONS·ERROR-POLICY·템플릿)는 *읽기 전용* — DP-9 자동 경로가 절대 건드리지 않음. (각 프로젝트 진화가 제각각이므로 공유 룰북에 머지하면 전 프로젝트 오염.)
+**공유 룰북 불가침 (D-Stage3-6)**: 진화는 *프로젝트 인스턴스(`dlc-meta`)에만* 적용. 클론된 공유 `ai-dlc-orchestrator`(DECISIONS·ERROR-POLICY·템플릿)는 *읽기 전용* — DP-9 자동 경로가 절대 건드리지 않음. (각 프로젝트 진화가 제각각이므로 공유 룰북에 머지하면 전 프로젝트 오염.)
 
 ---
 
@@ -180,7 +180,7 @@ DP별 산출:
 
 회고가 *지목한 파일*에 따라 라우팅이 갈린다:
 - **인스턴스 귀속** (지목 파일 = `ORCHESTRATOR.md` 컨펌/예외 오버라이드·라우팅 패턴, `REPO-MAP`): ②①③④와 동일 경로 — `dlc-meta` 인스턴스에 §4 게이트로 적용.
-- **공유 룰북 귀속** (지목 파일 = 공유 `ix-ai-dlc`의 DECISIONS·ERROR-POLICY·SYSTEM-WORKFLOW·템플릿 등): **자동 적용 금지** (D-Stage3-6 불가침). 대신 *사람-큐레이션 큐*에 제안으로 등재 — 원칙 8 PR/머지 통로(SETTER §6)로만 반영. DP-9 자동 경로 밖.
+- **공유 룰북 귀속** (지목 파일 = 공유 `ai-dlc-orchestrator`의 DECISIONS·ERROR-POLICY·SYSTEM-WORKFLOW·템플릿 등): **자동 적용 금지** (D-Stage3-6 불가침). 대신 *사람-큐레이션 큐*에 제안으로 등재 — 원칙 8 PR/머지 통로(SETTER §6)로만 반영. DP-9 자동 경로 밖.
 
 > 이 분기가 ⑤의 핵심: 회고는 *공유 룰북 갭*을 자주 가리키는데(런타임 로그는 거의 못 가리킴), 그것을 *자동 머지하지 않고* 사람 큐레이션으로 안전하게 흘린다.
 
@@ -209,9 +209,9 @@ DP별 산출:
 ### 4.3 게이트 — 항상 컨펌 + 인스턴스 커밋
 
 - DP-9 = **항상 사용자 컨펌** (오케스트레이터 *행동*을 바꾸므로 — 컨펌은 비가역성이 아니라 *사용자 opt-in* 논리. 커밋은 어차피 가역).
-- 승인 시 적용 = **`dlc-meta` 인스턴스 갱신** (D-Stage3-6): ②③④ → `ORCHESTRATOR.md`(컨펌/예외 오버라이드·라우팅 패턴) / ① → `REPO-MAP.md`. **공유 `ix-ai-dlc`(DECISIONS·ERROR-POLICY·템플릿)는 건드리지 않음.**
+- 승인 시 적용 = **`dlc-meta` 인스턴스 갱신** (D-Stage3-6): ②③④ → `ORCHESTRATOR.md`(컨펌/예외 오버라이드·라우팅 패턴) / ① → `REPO-MAP.md`. **공유 `ai-dlc-orchestrator`(DECISIONS·ERROR-POLICY·템플릿)는 건드리지 않음.**
 - 적용은 **별도 PR 흐름이 아니라 `dlc-meta`의 루틴 커밋** — 진화 변경은 프로젝트 자기 메타 레포에 동승해 머지됨. *전용 진화-PR 파이프라인 없음.*
-- **원칙 8 "PR/머지"는 공유 룰북·템플릿 변경 전용** (예: 어떤 패턴이 *보편적*이라 판단해 공유 `ix-ai-dlc`에 반영) — 이는 *사람의 수동 큐레이션*이며 DP-9 자동 경로 **밖**. SETTER §6 "템플릿 변경은 PR/머지로만"이 그 통로.
+- **원칙 8 "PR/머지"는 공유 룰북·템플릿 변경 전용** (예: 어떤 패턴이 *보편적*이라 판단해 공유 `ai-dlc-orchestrator`에 반영) — 이는 *사람의 수동 큐레이션*이며 DP-9 자동 경로 **밖**. SETTER §6 "템플릿 변경은 PR/머지로만"이 그 통로.
 
 ---
 
@@ -276,7 +276,7 @@ v1.4 — **D-Stage3-5 (④ 시그니처 입도 디폴트)**.
 - CYCLE-LOG B-④ 예시·필드 정합 + §6.1 DP-2 Output 가이드에 영향 도메인 집합 명시.
 
 v1.5 — **D-Stage3-6 (진화 적용 = dlc-meta 인스턴스 전용)**.
-- 공유 배포(클론) 전제에서 진화를 *프로젝트 인스턴스(`dlc-meta`)에만* 적용. 공유 `ix-ai-dlc`(DECISIONS·ERROR-POLICY·템플릿)는 읽기 전용 불가침 — 프로젝트별 진화가 전 프로젝트로 새는 오염 방지.
+- 공유 배포(클론) 전제에서 진화를 *프로젝트 인스턴스(`dlc-meta`)에만* 적용. 공유 `ai-dlc-orchestrator`(DECISIONS·ERROR-POLICY·템플릿)는 읽기 전용 불가침 — 프로젝트별 진화가 전 프로젝트로 새는 오염 방지.
 - ②③ 재타겟: ②=공유 DECISIONS → 인스턴스 `ORCHESTRATOR.md` 컨펌 오버라이드 / ③=공유 ERROR-POLICY → 인스턴스 예외 오버라이드. ①④는 원래 인스턴스(REPO-MAP·ORCHESTRATOR.md)라 그대로.
 - §4.3 정정: "승인 시 PR(원칙 8)" 프레이밍 폐기 → **dlc-meta 루틴 커밋 + 인-사이클 컨펌 게이트**. 전용 진화-PR 파이프라인 없음. 원칙 8 PR/머지는 *공유 룰북 사람-큐레이션* 전용으로 격리.
 - ORCHESTRATOR.template에 컨펌/예외 오버라이드 섹션 신설 (인스턴스 슬롯).

@@ -4,7 +4,7 @@
 > 본 명세는 "성공/완료/통과" 보고를 *지상검증(ground truth)* 으로 확인하는 횡단 규율(POLICY-VERIFY)을 정의한다.
 > 검증 *실행*은 오케스트레이터 책임 5(결과 통합·검토)와 각 서브 에이전트의 자가 검증. 본 문서는 *무엇을·어떻게 검증하는지의 룰만* 정의.
 > 변경은 깃 PR/머지 (원칙 8) — ORCHESTRATOR-AGENT.md §5 / ERROR-POLICY.md(EX 카탈로그) / SYSTEM-WORKFLOW.md §3.1(POLICY-*)이 본 규율에 의존하므로 변경 시 영향 검토 필수.
-> 위치: `ix-ai-dlc/specs/VERIFICATION.md`
+> 위치: `ai-dlc-orchestrator/specs/VERIFICATION.md`
 
 > **POLICY-VERIFY (검증·지상검증)** — 어떤 주체(서브 에이전트든 자기 자신이든)의 "성공/완료/통과"는 *증거가 아니라 클레임(주장)* 이다. 사용자에게 성공을 보고하거나 의존 작업으로 진행하기 전에, 그 클레임을 *지상검증(가장 낮은 수준의 관찰 가능한 실제 — 상위 보고나 의도가 아님)* 으로 확인한다. 정확성이 중요하거나 되돌리기 어려운 클레임은 *구현자와 다른 독립 검증자* 가 확인한다. 검증 깊이는 위험·비가역성·파급 범위에 비례시킨다.
 
@@ -18,7 +18,7 @@
 | 실행 주체 | 오케스트레이터 (책임 5 결과 통합·검토) + 각 서브 에이전트(자가 검증) + 독립 검증자(정확성 중요 시) |
 | 참조 주체 | `agents/orchestrator/ORCHESTRATOR-AGENT.md` §5 / `agents/orchestrator/ERROR-POLICY.md`(검증 미수행 EX) / `specs/SYSTEM-WORKFLOW.md` §3.1(POLICY-*) |
 | 라벨 | **POLICY-VERIFY** (다른 파일이 본 규율을 이 라벨로 인용) |
-| 위치 | `ix-ai-dlc/specs/VERIFICATION.md` |
+| 위치 | `ai-dlc-orchestrator/specs/VERIFICATION.md` |
 
 **왜 에이전트가 아닌가**: 검증은 *모든 단계에서 발생하는 횡단 규율* — 자가 검증·통합 검토·종료 보고 어디서나 적용. 별도 에이전트로 분리하면 호출 빈도 과다(원칙 1 비효율). 따라서 본 문서는 *룰만* 제공하고, 실행은 각 주체가 직접 수행한다.
 

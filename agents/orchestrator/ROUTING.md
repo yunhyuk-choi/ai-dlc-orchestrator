@@ -2,7 +2,7 @@
 
 > ORCHESTRATOR-AGENT.md §4의 본문.
 > 인텐트 분류·영향 분석·AWS 6 factors·호출 대상·병렬성 알고리즘.
-> 위치: `ix-ai-dlc/agents/orchestrator/ROUTING.md`
+> 위치: `ai-dlc-orchestrator/agents/orchestrator/ROUTING.md`
 > 로딩 시점: 인텐트 분류·계획 수립 시점
 
 ---
@@ -69,7 +69,7 @@ REPO-MAP 활용 (원칙 6 단일 원천).
 
 ## 3. 단계 [3] — SYSTEM-WORKFLOW STEP 선택 (AWS 6 factors)
 
-`ix-ai-dlc/specs/SYSTEM-WORKFLOW.md`의 STEP 0~10 (시스템 레벨 재포지셔닝). 인텐트·영향·복잡도로 *런타임 판단*해 STEP 스킵·추가·detail level 결정.
+`ai-dlc-orchestrator/specs/SYSTEM-WORKFLOW.md`의 STEP 0~10 (시스템 레벨 재포지셔닝). 인텐트·영향·복잡도로 *런타임 판단*해 STEP 스킵·추가·detail level 결정.
 
 ### 3.1 AWS 6 factors 정의
 

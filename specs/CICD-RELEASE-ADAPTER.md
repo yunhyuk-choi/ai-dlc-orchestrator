@@ -6,7 +6,7 @@
 > 본 명세는 **조건부** 다 — 레포가 CI/CD 또는 퍼블리시·릴리스 플로우를 *실제로 가질 때만* 발동하고, 없으면 비활성(inert)이다(§1).
 > 도구·기술 명칭(CI 설정 파일·레지스트리·버전 도구·시각회귀 리뷰 도구 등)은 모두 *예시(e.g.)* 일 뿐 요구사항이 아니다. 프로젝트·OS에 맞는 동치 수단으로 대체한다.
 > 변경은 깃 PR/머지 (원칙 8) — `specs/SYSTEM-WORKFLOW.md` STEP 9(릴리스 게이트) / `agents/orchestrator/DECISIONS.md` §5(A-3·A-4·A-5) / `agents/orchestrator/ERROR-POLICY.md` EX-13 / `specs/VERIFICATION.md`(POLICY-VERIFY)가 본 명세에 연계되므로 변경 시 영향 검토 필수.
-> 위치: `ix-ai-dlc/specs/CICD-RELEASE-ADAPTER.md`
+> 위치: `ai-dlc-orchestrator/specs/CICD-RELEASE-ADAPTER.md`
 
 > **POLICY-RELEASE (CI/CD·릴리스 통합)** — 레포가 CI/CD·퍼블리시 플로우를 가질 때, 오케스트레이터는 그 *게이트 집합* 을 착지 전에 이해하고, *필수 게이트 실패는 우회 금지 신호* 로 다루며(사람 승인 게이트는 사람 수락을 대기), 릴리스는 *버전 범프 → 기본 브랜치 착지(A-3) → 태그/릴리스 → CI 퍼블리시 → 레지스트리·엔드포인트에서 산출물 존재 검증(POLICY-VERIFY)* 의 순서를 따른다. 공유 컴포넌트는 *퍼블리시·검증 완료 후에만 소비자가 채택(A-5)* 한다. CI/릴리스 자격증명의 스코프·역할 부족은 EX-13로 진단한다.
 
@@ -20,7 +20,7 @@
 | 실행 주체 | 오케스트레이터 (게이트 인식·릴리스 조율·검증 트리거) / 각 서브 에이전트(자가 검증). 본 룰의 *CI/CD 부착·통합* 실행은 `agents/CICD-SETTER.md` |
 | 참조 주체 | `specs/SYSTEM-WORKFLOW.md` STEP 9 / `agents/orchestrator/DECISIONS.md` §5(A-3·A-4·A-5) / `agents/orchestrator/ERROR-POLICY.md` EX-13 / `specs/VERIFICATION.md`(POLICY-VERIFY) / `agents/CICD-SETTER.md`(실행) / `specs/DEPLOY-ADAPTER.md`(릴리스 다음 단계) |
 | 라벨 | **POLICY-RELEASE** (다른 파일이 본 통합 규율을 이 라벨로 인용) |
-| 위치 | `ix-ai-dlc/specs/CICD-RELEASE-ADAPTER.md` |
+| 위치 | `ai-dlc-orchestrator/specs/CICD-RELEASE-ADAPTER.md` |
 
 **왜 어댑터인가**: 우리 시스템(시스템 레벨 조율)과 레포가 보유한 *CI/CD·릴리스 머신*(레포 레벨 자동화) 사이의 *번역·중개 레이어*. 우리는 그 머신을 *대체하지 않고* — 그 게이트·플로우를 인식하고, 우회하지 않고, 결과를 지상검증한다.
 

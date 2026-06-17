@@ -2,7 +2,7 @@
 
 > 메인 에이전트(팀장) 동작 룰북. dlc의 심장.
 > **이 파일은 코어 — 항상 로드.** 디테일은 같은 디렉토리의 4개 파일에 분리.
-> 위치: `ix-ai-dlc/agents/orchestrator/ORCHESTRATOR-AGENT.md`
+> 위치: `ai-dlc-orchestrator/agents/orchestrator/ORCHESTRATOR-AGENT.md`
 > 운영 시 `dlc-meta/ORCHESTRATOR.md` 시스템 인스턴스가 이 룰북을 참조한다.
 > **세션 진입점은 리포 루트 `CLAUDE.md`** — 세션 시작 시 그 부트스트랩 파일이 본 룰북을 로드해 오케스트레이터 정체성을 채택시키고(미부트스트랩이면 SETTER 우선), 운영 모드로 진입시킨다.
 
@@ -27,7 +27,7 @@
 본 시스템은 3-계층 아키텍처:
 
 ```
-Layer 0  공유 룰북       ix-ai-dlc/         ← 본 파일 위치
+Layer 0  공유 룰북       ai-dlc-orchestrator/         ← 본 파일 위치
 Layer 1  시스템 인스턴스  dlc-meta/          ← 운영 컨텍스트
 Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (AWS AI-DLC)
 ```
@@ -52,7 +52,7 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
 | 호출 주체 | 사용자 (또는 상위 오케스트레이터, 재귀 확장 시) |
 | 수명 | 지속적 — 시스템 운영 전체 기간. 기본 영구. |
 | 사용자 채널 | 사용자의 *유일한 진입점* |
-| 위치 | `ix-ai-dlc/agents/orchestrator/` |
+| 위치 | `ai-dlc-orchestrator/agents/orchestrator/` |
 | 인스턴스 | `dlc-meta/ORCHESTRATOR.md` (시스템 부트스트랩 시 SETTER가 생성) |
 
 ---
@@ -168,7 +168,7 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
 [7] 사이클 종료까지 [3]~[6] 반복
 ```
 
-각 단계 도달 시 ROUTING.md 해당 섹션 참조. 시스템 워크플로우 본문(STEP 0~10)은 `ix-ai-dlc/specs/SYSTEM-WORKFLOW.md`.
+각 단계 도달 시 ROUTING.md 해당 섹션 참조. 시스템 워크플로우 본문(STEP 0~10)은 `ai-dlc-orchestrator/specs/SYSTEM-WORKFLOW.md`.
 
 ---
 
@@ -245,28 +245,28 @@ EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4
 
 | 파일 | 역할 | 본 룰북과의 관계 |
 |---|---|---|
-| `ix-ai-dlc/agents/orchestrator/ROUTING.md` | 라우팅 알고리즘 디테일 | §4 위임 |
-| `ix-ai-dlc/agents/orchestrator/DECISIONS.md` | 분기 판단 메커니즘 디테일 | §5 위임 |
-| `ix-ai-dlc/agents/orchestrator/ERROR-POLICY.md` | 에러·예외 처리 정책 본문 | §6 위임 |
-| `ix-ai-dlc/agents/orchestrator/TERMINATION.md` | 운영 모드 종료 디테일 | §7 위임 |
-| `ix-ai-dlc/agents/SETTER.md` | 시스템 부트스트랩 룰북 | 책임 3 호출 대상 |
-| `ix-ai-dlc/agents/REPO-SETTER.md` | 레포별 셋업 (AWS 룰셋 설치) | 책임 3 호출 대상 |
-| `ix-ai-dlc/agents/REPO-CREATOR.md` | 추가 레포 생성 | 책임 8 호출 대상 |
-| `ix-ai-dlc/agents/HANDOFF-WRITER.md` | 핸드오프 문서 생성 | EX-9 호출 대상 |
-| `ix-ai-dlc/specs/CYCLE-LOG.md` | 사이클 로그 형식 명세 (에이전트 아님) | 책임 7 룰 원천 |
-| `ix-ai-dlc/agents/CYCLE-CLOSER.md` | 사이클 종료 후처리 | 책임 9 호출 대상 |
-| `ix-ai-dlc/agents/CICD-SETTER.md` | 레포별 CI/CD 부착·통합 실행 (조건부) | 책임 3 호출 대상 (REPO-SETTER 셋업 시·운영 중 재부착) |
-| `ix-ai-dlc/agents/DEPLOY-AGENT.md` | 적응형 환경 배포 실행 (조건부, non-prod 자율 / prod A-4) | 책임 3 호출 대상 (착지 후 배포 — SYSTEM-WORKFLOW STEP 9.5) |
-| `ix-ai-dlc/specs/SYSTEM-WORKFLOW.md` | 시스템 레벨 STEP 0~10 (에이전트 아님) | §4.1 [3] 적용 워크플로우 |
-| `ix-ai-dlc/specs/AWS-ADAPTER.md` | AWS 룰셋 설치·예외 전파 인터페이스 명세 (에이전트 아님) | ERROR-POLICY §5 위임처 |
-| `ix-ai-dlc/specs/VERIFICATION.md` | 검증·지상검증 규율 명세 (POLICY-VERIFY, 에이전트 아님) | §5 결과 통합·검토 규율 원천 |
-| `ix-ai-dlc/specs/CICD-RELEASE-ADAPTER.md` | CI/CD·릴리스 통합 명세 (POLICY-RELEASE, 조건부, 에이전트 아님) | 릴리스 게이트·EX-13 규율 원천 |
-| `ix-ai-dlc/specs/DEPLOY-ADAPTER.md` | 실행 환경 배포 규율 명세 (POLICY-DEPLOY, 조건부, 에이전트 아님) | DEPLOY-AGENT 실행 룰 원천 / STEP 9.5 착지 후 배포·A-4 |
-| `ix-ai-dlc/specs/EVOLUTION.md` | 룰북 진화·메타 프로세스 명세 (에이전트 아님) | DP-9 진화 분기 룰 원천 |
-| `ix-ai-dlc/templates/HANDOFF.template.md` | 핸드오프 문서 단일 원천 | EX-9 포맷 원천 |
-| `ix-ai-dlc/templates/ORCHESTRATOR.template.md` | 시스템 인스턴스 템플릿 | SETTER가 채워 `dlc-meta/ORCHESTRATOR.md` 생성 |
-| `ix-ai-dlc/templates/REPO-MAP.template.md` | 시스템 단위 레포 인벤토리 | 영향 분석 입력 원천 |
-| `ix-ai-dlc/templates/RETROSPECTIVE.template.md` | 사이클 회고 산출 단일 원천 | TERMINATION §4.4 회고 → EVOLUTION 입력 포맷 |
+| `ai-dlc-orchestrator/agents/orchestrator/ROUTING.md` | 라우팅 알고리즘 디테일 | §4 위임 |
+| `ai-dlc-orchestrator/agents/orchestrator/DECISIONS.md` | 분기 판단 메커니즘 디테일 | §5 위임 |
+| `ai-dlc-orchestrator/agents/orchestrator/ERROR-POLICY.md` | 에러·예외 처리 정책 본문 | §6 위임 |
+| `ai-dlc-orchestrator/agents/orchestrator/TERMINATION.md` | 운영 모드 종료 디테일 | §7 위임 |
+| `ai-dlc-orchestrator/agents/SETTER.md` | 시스템 부트스트랩 룰북 | 책임 3 호출 대상 |
+| `ai-dlc-orchestrator/agents/REPO-SETTER.md` | 레포별 셋업 (AWS 룰셋 설치) | 책임 3 호출 대상 |
+| `ai-dlc-orchestrator/agents/REPO-CREATOR.md` | 추가 레포 생성 | 책임 8 호출 대상 |
+| `ai-dlc-orchestrator/agents/HANDOFF-WRITER.md` | 핸드오프 문서 생성 | EX-9 호출 대상 |
+| `ai-dlc-orchestrator/specs/CYCLE-LOG.md` | 사이클 로그 형식 명세 (에이전트 아님) | 책임 7 룰 원천 |
+| `ai-dlc-orchestrator/agents/CYCLE-CLOSER.md` | 사이클 종료 후처리 | 책임 9 호출 대상 |
+| `ai-dlc-orchestrator/agents/CICD-SETTER.md` | 레포별 CI/CD 부착·통합 실행 (조건부) | 책임 3 호출 대상 (REPO-SETTER 셋업 시·운영 중 재부착) |
+| `ai-dlc-orchestrator/agents/DEPLOY-AGENT.md` | 적응형 환경 배포 실행 (조건부, non-prod 자율 / prod A-4) | 책임 3 호출 대상 (착지 후 배포 — SYSTEM-WORKFLOW STEP 9.5) |
+| `ai-dlc-orchestrator/specs/SYSTEM-WORKFLOW.md` | 시스템 레벨 STEP 0~10 (에이전트 아님) | §4.1 [3] 적용 워크플로우 |
+| `ai-dlc-orchestrator/specs/AWS-ADAPTER.md` | AWS 룰셋 설치·예외 전파 인터페이스 명세 (에이전트 아님) | ERROR-POLICY §5 위임처 |
+| `ai-dlc-orchestrator/specs/VERIFICATION.md` | 검증·지상검증 규율 명세 (POLICY-VERIFY, 에이전트 아님) | §5 결과 통합·검토 규율 원천 |
+| `ai-dlc-orchestrator/specs/CICD-RELEASE-ADAPTER.md` | CI/CD·릴리스 통합 명세 (POLICY-RELEASE, 조건부, 에이전트 아님) | 릴리스 게이트·EX-13 규율 원천 |
+| `ai-dlc-orchestrator/specs/DEPLOY-ADAPTER.md` | 실행 환경 배포 규율 명세 (POLICY-DEPLOY, 조건부, 에이전트 아님) | DEPLOY-AGENT 실행 룰 원천 / STEP 9.5 착지 후 배포·A-4 |
+| `ai-dlc-orchestrator/specs/EVOLUTION.md` | 룰북 진화·메타 프로세스 명세 (에이전트 아님) | DP-9 진화 분기 룰 원천 |
+| `ai-dlc-orchestrator/templates/HANDOFF.template.md` | 핸드오프 문서 단일 원천 | EX-9 포맷 원천 |
+| `ai-dlc-orchestrator/templates/ORCHESTRATOR.template.md` | 시스템 인스턴스 템플릿 | SETTER가 채워 `dlc-meta/ORCHESTRATOR.md` 생성 |
+| `ai-dlc-orchestrator/templates/REPO-MAP.template.md` | 시스템 단위 레포 인벤토리 | 영향 분석 입력 원천 |
+| `ai-dlc-orchestrator/templates/RETROSPECTIVE.template.md` | 사이클 회고 산출 단일 원천 | TERMINATION §4.4 회고 → EVOLUTION 입력 포맷 |
 | `dlc-meta/ORCHESTRATOR.md` | 시스템 인스턴스 | 운영 시 본 룰북 참조하는 인스턴스 |
 | `dlc-meta/REPO-MAP.md` | 시스템 도메인↔레포 매핑 | 단일 원천 (원칙 6) |
 | `dlc-meta/cycles/{cycle-id}/audit.md` | 사이클 단위 결정 추적 | 결정·예외 기록 |

@@ -2,7 +2,7 @@
 
 > ORCHESTRATOR-AGENT.md §7의 본문.
 > 종료 단위·신호·후처리·세션·운영 모드 정책·보고 형식.
-> 위치: `ix-ai-dlc/agents/orchestrator/TERMINATION.md`
+> 위치: `ai-dlc-orchestrator/agents/orchestrator/TERMINATION.md`
 > 로딩 시점: 사이클 종료 신호 감지 시
 
 ---
@@ -213,7 +213,7 @@ EX-9 트리거 → **HANDOFF-WRITER 자동 호출** (ERROR-POLICY.md §4 본격 
 처리:
 - 메타 레포 (`dlc-meta/`) 아카이브 안내
 - 영향 레포의 `aidlc-rules/` 보존 안내 (재사용 가능)
-- 본 룰북 (`ix-ai-dlc/`) 클론은 그대로 두어도 됨 (다른 시스템에서 재사용)
+- 본 룰북 (`ai-dlc-orchestrator/`) 클론은 그대로 두어도 됨 (다른 시스템에서 재사용)
 
 ### 6.4 무응답 장기간 — 정상 운영 상태
 

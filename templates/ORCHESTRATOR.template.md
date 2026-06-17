@@ -1,7 +1,7 @@
 # ORCHESTRATOR.md — {SYSTEM_NAME}
 
 > 시스템 라우팅 *인스턴스*. 오케스트레이터 에이전트가 읽고 작업 라우팅에 사용.
-> 동작 규칙은 공유 리포(`ix-ai-dlc`)의 `agents/orchestrator/ORCHESTRATOR-AGENT.md` 참조.
+> 동작 규칙은 공유 리포(`ai-dlc-orchestrator`)의 `agents/orchestrator/ORCHESTRATOR-AGENT.md` 참조.
 
 ---
 
@@ -33,7 +33,7 @@
 
 > DP-9(신호 ④ — 호출 경로)에서 감지·**사용자 승인된** 라우팅 단축 패턴이 이 섹션에 누적된다.
 > 이곳은 진화의 *적용 결과 측* — **감지 입력이 아님** (감지는 로그 `index.md` B-④; 관심사 분리, D-Stage3-1).
-> 형식·판정·등록 절차는 `ix-ai-dlc/specs/EVOLUTION.md` §3.D 위임.
+> 형식·판정·등록 절차는 `ai-dlc-orchestrator/specs/EVOLUTION.md` §3.D 위임.
 
 엔트리 형식:
 
@@ -51,8 +51,8 @@
 ## 컨펌 정책 오버라이드
 
 > DP-9(신호 ② — 컨펌 응답 패턴)에서 감지·**사용자 승인된** *이 프로젝트의* 컨펌 정책 조정이 누적된다.
-> 공유 `ix-ai-dlc/agents/orchestrator/DECISIONS.md`의 컨펌 디폴트는 **불변** — 여기는 프로젝트 로컬 오버라이드 (D-Stage3-6: 프로젝트별 학습이 전 프로젝트로 새지 않게).
-> 형식·판정은 `ix-ai-dlc/specs/EVOLUTION.md` §3.A 위임.
+> 공유 `ai-dlc-orchestrator/agents/orchestrator/DECISIONS.md`의 컨펌 디폴트는 **불변** — 여기는 프로젝트 로컬 오버라이드 (D-Stage3-6: 프로젝트별 학습이 전 프로젝트로 새지 않게).
+> 형식·판정은 `ai-dlc-orchestrator/specs/EVOLUTION.md` §3.A 위임.
 
 엔트리 형식:
 
@@ -69,8 +69,8 @@
 ## 예외 정책 오버라이드
 
 > DP-9(신호 ③ — 예외 반복)에서 감지·**사용자 승인된** (EX, 레포) 특화 처리가 누적된다.
-> 공유 `ix-ai-dlc/agents/orchestrator/ERROR-POLICY.md`의 디폴트는 **불변** — 여기는 프로젝트 로컬 오버라이드 (D-Stage3-6).
-> 형식·판정은 `ix-ai-dlc/specs/EVOLUTION.md` §3.C 위임.
+> 공유 `ai-dlc-orchestrator/agents/orchestrator/ERROR-POLICY.md`의 디폴트는 **불변** — 여기는 프로젝트 로컬 오버라이드 (D-Stage3-6).
+> 형식·판정은 `ai-dlc-orchestrator/specs/EVOLUTION.md` §3.C 위임.
 
 엔트리 형식:
 

@@ -15,7 +15,7 @@
 | 실행 주체 | 오케스트레이터 (책임 7) — 본 형식에 따라 audit.md에 직접 append |
 | 흡수 관계 | DECISIONS.md §3 분기점 기록 + ERROR-POLICY.md §3 예외 기록 형식이 *본 명세에 통합* — 단일 원천 (원칙 6) |
 | 참조 주체 | DECISIONS.md / ERROR-POLICY.md / HANDOFF-WRITER.md (모두 본 형식 따름) |
-| 위치 | `ix-ai-dlc/specs/CYCLE-LOG.md` |
+| 위치 | `ai-dlc-orchestrator/specs/CYCLE-LOG.md` |
 
 **왜 에이전트가 아닌가**:
 - 사이클 로깅은 *모든 단계에서 발생* — 분기점·예외·작업 진행·AWS 트리거 등 빈번
