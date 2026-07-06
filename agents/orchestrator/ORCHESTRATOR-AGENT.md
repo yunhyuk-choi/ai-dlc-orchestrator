@@ -63,11 +63,11 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
 
 1. **요구사항 분석·쪼개기** — 사용자 인텐트 수신, 자연어 → 작업 구조 분해
 2. **플랜 수립 + 사용자 컨펌** — STEP 적용·스킵 계획, execution-plan.md 산출, 사용자 검토 게이트
-3. **모든 서브 에이전트 호출·조율** — 우리 서브 (SETTER / REPO-SETTER / REPO-CREATOR / HANDOFF-WRITER / CYCLE-LOG / CYCLE-CLOSER / **CICD-SETTER** / **DEPLOY-AGENT**) **+ 각 레포의 AWS 에이전트 (작업 위탁)**. 직렬·병렬 판단, 컨텍스트 격리. (원칙 7). **CICD-SETTER**(레포별 CI/CD 부착·통합 — REPO-SETTER 셋업 시 또는 운영 중 재부착)·**DEPLOY-AGENT**(적응형 환경 배포 — 착지 후 배포 단계, non-prod 자율 / prod 사람게이트 A-4)도 *조건부* 서브이며 그 호출 판단·조율 역시 본 책임이다 (SYSTEM-WORKFLOW STEP 9.5).
+3. **모든 서브 에이전트 호출·조율** — 우리 서브 (SETTER / REPO-SETTER / REPO-CREATOR / HANDOFF-WRITER / CYCLE-LOG / CYCLE-CLOSER / **CICD-SETTER** / **DEPLOY-AGENT** / **ISSUE-TRACKER-AGENT**) **+ 각 레포의 AWS 에이전트 (작업 위탁)**. 직렬·병렬 판단, 컨텍스트 격리. (원칙 7). **CICD-SETTER**(레포별 CI/CD 부착·통합 — REPO-SETTER 셋업 시 또는 운영 중 재부착)·**DEPLOY-AGENT**(적응형 환경 배포 — 착지 후 배포 단계, non-prod 자율 / prod 사람게이트 A-4)·**ISSUE-TRACKER-AGENT**(적응형 이슈 트래커 연동 — 사이클↔티켓 바인딩·범위 밖 요청 티켓, 트래커 config 보유 시)도 *조건부* 서브이며 그 호출 판단·조율 역시 본 책임이다 (SYSTEM-WORKFLOW STEP 9.5 / POLICY-ISSUE-TRACKING).
 4. **분기 판단** — 시스템 라우팅 + 레포 워크플로우 분기 모두 *런타임 판단*. 레포 워크플로우 분기 = AWS `execution-plan.md` 검토·승인 형태.
 5. **결과 통합·검토** — 서브 산출물 컨펌, 정합성 검증, 통합. 각 레포의 `audit.md` / `aidlc-state.md` 흡수, cross-repo 결합점 검증 포함. **서브의 "완료/통과" 자기 보고는 *클레임이지 증거가 아니다* — 통합·보고 전에 지상검증(소스·보고가 아닌 빌드·서빙 산출물·실측·실제 로그)으로 확인한다. 정확성 중요·비가역 결과는 *구현한 서브가 아닌 독립 검증자* 를 세운다. 상세는 `specs/VERIFICATION.md`(POLICY-VERIFY).**
 6. **사용자 보고** — 결과 전달, 추가 요청 수신. 단일 채널.
-7. **사이클 로깅 시작·관리** — CYCLE-LOG.md 룰 따라. 각 레포 `audit.md`를 시스템 단위 `dlc-meta/cycles/`로 통합 집계. (원칙 5)
+7. **사이클 로깅 시작·관리 + (조건부) 사이클↔티켓 바인딩** — CYCLE-LOG.md 룰 따라. 각 레포 `audit.md`를 시스템 단위 `dlc-meta/cycles/`로 통합 집계. (원칙 5). **트래커 config 보유 시(POLICY-ISSUE-TRACKING — `specs/ISSUE-TRACKER-ADAPTER.md`)** 사이클을 티켓에 바인딩한다(ISSUE-TRACKER-AGENT 호출 — 책임 3): *사이클 START* = 범위 안이면 티켓 생성(배정=사용자) + In-Progress 전이(필수) / *진행 중* = MR·커밋·결정을 코멘트/설명으로 audit.md와 동기화 / *CLOSE* = Done 전이(CYCLE-CLOSER) / *작은 후속* = 새 티켓 없이 관련 기존 티켓·그 브랜치에서 계속 / *범위 밖 아이템* = 트리아지 담당자 배정 요청 티켓(자기 전이 안 함).
 8. **추가 레포 필요성 판단** — 필요 시 REPO-CREATOR 호출.
 9. **사이클 종료 판단** — 적절 시점에 CYCLE-CLOSER 호출.
 
@@ -79,6 +79,7 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
 | 레포별 셋업 실행 (AWS 룰셋 설치 포함) | REPO-SETTER |
 | 레포별 CI/CD 부착·통합 실행 (조건부) | CICD-SETTER |
 | 검증된 릴리스 이후 환경 배포 실행 (조건부, prod는 A-4 사람게이트) | DEPLOY-AGENT |
+| 이슈 트래커 티켓 생성·전이·코멘트·배선 실행 (조건부) | ISSUE-TRACKER-AGENT |
 | 추가 레포 생성 실행 | REPO-CREATOR |
 | 핸드오프 문서 생성 (EX-9 트리거 시) | HANDOFF-WRITER |
 | 사이클 로깅 형식 명세 | CYCLE-LOG |
@@ -257,11 +258,13 @@ EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4
 | `ai-dlc-orchestrator/agents/CYCLE-CLOSER.md` | 사이클 종료 후처리 | 책임 9 호출 대상 |
 | `ai-dlc-orchestrator/agents/CICD-SETTER.md` | 레포별 CI/CD 부착·통합 실행 (조건부) | 책임 3 호출 대상 (REPO-SETTER 셋업 시·운영 중 재부착) |
 | `ai-dlc-orchestrator/agents/DEPLOY-AGENT.md` | 적응형 환경 배포 실행 (조건부, non-prod 자율 / prod A-4) | 책임 3 호출 대상 (착지 후 배포 — SYSTEM-WORKFLOW STEP 9.5) |
+| `ai-dlc-orchestrator/agents/ISSUE-TRACKER-AGENT.md` | 적응형 이슈 트래커 연동 실행 (조건부 — 티켓 생성·전이·코멘트·배선) | 책임 3 호출 대상 (사이클↔티켓 바인딩·요청 티켓 — 책임 7 / POLICY-ISSUE-TRACKING) |
 | `ai-dlc-orchestrator/specs/SYSTEM-WORKFLOW.md` | 시스템 레벨 STEP 0~10 (에이전트 아님) | §4.1 [3] 적용 워크플로우 |
 | `ai-dlc-orchestrator/specs/AWS-ADAPTER.md` | AWS 룰셋 설치·예외 전파 인터페이스 명세 (에이전트 아님) | ERROR-POLICY §5 위임처 |
 | `ai-dlc-orchestrator/specs/VERIFICATION.md` | 검증·지상검증 규율 명세 (POLICY-VERIFY, 에이전트 아님) | §5 결과 통합·검토 규율 원천 |
 | `ai-dlc-orchestrator/specs/CICD-RELEASE-ADAPTER.md` | CI/CD·릴리스 통합 명세 (POLICY-RELEASE, 조건부, 에이전트 아님) | 릴리스 게이트·EX-13 규율 원천 |
 | `ai-dlc-orchestrator/specs/DEPLOY-ADAPTER.md` | 실행 환경 배포 규율 명세 (POLICY-DEPLOY, 조건부, 에이전트 아님) | DEPLOY-AGENT 실행 룰 원천 / STEP 9.5 착지 후 배포·A-4 |
+| `ai-dlc-orchestrator/specs/ISSUE-TRACKER-ADAPTER.md` | 사이클↔티켓 바인딩 규율 명세 (POLICY-ISSUE-TRACKING, 조건부, 에이전트 아님) | ISSUE-TRACKER-AGENT 실행 룰 원천 / 책임 7 사이클↔티켓 바인딩 |
 | `ai-dlc-orchestrator/specs/EVOLUTION.md` | 룰북 진화·메타 프로세스 명세 (에이전트 아님) | DP-9 진화 분기 룰 원천 |
 | `ai-dlc-orchestrator/templates/HANDOFF.template.md` | 핸드오프 문서 단일 원천 | EX-9 포맷 원천 |
 | `ai-dlc-orchestrator/templates/ORCHESTRATOR.template.md` | 시스템 인스턴스 템플릿 | SETTER가 채워 `dlc-meta/ORCHESTRATOR.md` 생성 |

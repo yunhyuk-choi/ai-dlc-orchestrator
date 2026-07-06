@@ -87,6 +87,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 4. `{메타 레포}/REPO-MAP.md` 인스턴스 생성 (템플릿 채움) — *신규만*
 5. `{메타 레포}/cycles/` 디렉토리 자리 마련 (사이클 로그 저장소 — 형식 명세는 `CYCLE-LOG.md` 영역)
 6. **자격증명 부트스트랩** — `.env.example`(필요 키 매니페스트, 값 없음) 생성·갱신 + `.env` 자리 마련 + `.gitignore`에 `.env` 추적 제외 보장. 시크릿 *값은 사용자가 채움* (SETTER는 값을 적지 않음)
+6.5. **(조건부) 이슈 트래커 config 포착** — 시스템이 트래커를 운영하면(S5.7) 인스턴스 트래커 config 파일(예: `{메타 레포}/ISSUE-TRACKER.md`)에 **`tracker.type`(jira/gitlab/github) + type별 좌표**(§2.2: jira=베이스 URL·프로젝트 키·email·statusNames / gitlab=host·projectIdOrPath·statusLabels·defaultAssignee / github=owner·repo·statusLabels·defaultAssignee[·milestone])·리포터/사용자·트리아지 담당자·**토큰 저장 위치(경로·변수명만 — 값 금지)** 를 기록 (POLICY-ISSUE-TRACKING). **(Jira 한정)** 필드/이슈타입/전이/보드/스프린트/에픽 맵 등 발견 메타는 런타임에 `ISSUE-TRACKER-AGENT`가 채우는 캐시 자리로 둔다(gitlab·github은 고정 스키마라 불요). 트래커 미운영이면 스킵 (조건부)
 7. 정합성 자체 체크 + 오케스트레이터에 결과 보고
 
 ### 비책임 (다른 산출물에 위임)
@@ -98,6 +99,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 | 사이클 로그 형식 명세 | `CYCLE-LOG.md` |
 | 시스템 운영 중 분기/조율 | `ORCHESTRATOR-AGENT.md` |
 | 사이클 종료 후처리 (티켓·커밋·보고서) | `CYCLE-CLOSER.md` |
+| 이슈 트래커 티켓 생성·전이·발견 메타 캐시 (실행) | `ISSUE-TRACKER-AGENT.md` (SETTER는 *config만* 포착) |
 
 ---
 
@@ -213,6 +215,25 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 > *경계*: Q5.3~Q5.6은 **시스템 전역**만. 한 레포에만 적용되는 규칙은 여기 넣지 말고 REPO-SETTER로 위임 (중복·과적합 방지). 특히 **Q5.6은 *레포별 배포 상세*(타깃·전략·환경 티어·prod 트리거 주체·배포 자격증명)를 중복 수집하지 않는다** — 그건 REPO-SETTER RP3.6.6이 per-repo로 잡아 REPO-MAP `{REPO_PROFILES}` deploy 필드에 기록한다. 여기서는 *여러 레포에 공통으로 걸리는 시스템 차원 규약*(공유 플랫폼·공유 CI·공유 승격 정책·prod 소유 주체)만 잡는다. 시스템에 공유 배포·CI 규약이 없으면(레포마다 제각각) Q5.6은 "(미지정)"으로 두고 건너뛴다(조건부 — POLICY-DEPLOY §1.1 / 범용 전제).
 > *기록 위치*: 응답은 S7 `ORCHESTRATOR.md` 인스턴스의 **「시스템 전역 컨벤션」 섹션**(템플릿 변수 `{SYSTEM_CONVENTIONS}`)에 기록한다 (S7 변수표 참조). 빈 값이면 "(미지정)"으로 채운다 — POLICY-TEMPLATE-ADHERENCE.
 
+#### S5.7. 이슈 트래커 config 인터뷰 (cross-repo 사이클↔티켓 바인딩) — **조건부**
+
+> *목적*: 시스템이 이슈 트래커(jira/gitlab/github)를 운영하면, 오케스트레이터가 각 작업 사이클을 티켓에 바인딩하고 범위 밖 작업을 요청 티켓으로 발행할 수 있도록 **트래커 config를 인스턴스에 1회 기록**한다 (POLICY-ISSUE-TRACKING — `specs/ISSUE-TRACKER-ADAPTER.md`). **조건부** — 트래커 없이 운영하는 시스템은 이 인터뷰를 통째로 건너뛴다(범용 전제).
+>
+> *적응형·비하드코딩*: `tracker.type`·베이스 URL·프로젝트 키·인증은 *배포마다 다르므로* 여기서 포착하고, 공유 룰북에는 박지 않는다. **인터뷰는 먼저 `tracker.type`(jira/gitlab/github)을 물어 그 type의 좌표만 이어서 묻는다**(ADAPTER §1.2·§2.2). **(Jira 한정) 구체 필드 id·이슈타입 id·상태 전이 id·보드/스프린트·에픽 맵은 런타임에 `ISSUE-TRACKER-AGENT`가 createmeta 등으로 발견해 인스턴스 config에 캐시**한다 — SETTER는 그 캐시 자리만 마련하고 발견값을 인터뷰하지 않는다(GitLab/GitHub은 스키마 고정이라 발견 캐시 자리 불요).
+
+| ID | 질문 | 비고 |
+|---|---|---|
+| Q5.7.1 | 이슈 트래커를 운영하는가? (아니오면 이하 스킵) | 조건부 게이트 |
+| Q5.7.2 | **`tracker.type`? (jira / gitlab / github)** — 이후 질문은 이 type의 좌표만 묻는다 | 어댑터 선택(§1.2) |
+| Q5.7.3 | **type별 좌표** — **jira**: 베이스 URL + API 버전 + 프로젝트 키(+id) + `email` / **gitlab**: 베이스 URL(host) + `projectIdOrPath` / **github**: `owner` + `repo` [+ `milestone`(기한용, 선택)] | type별 필수 좌표(§2.2) |
+| Q5.7.4 | 리포터/사용자 신원? (범위 안 사이클 티켓 배정 대상 = 설정된 사용자) | jira accountId / gitlab user id / github login |
+| Q5.7.5 | 트리아지 담당자? (범위 밖 요청 티켓 배정 대상 — 또는 명확한 소유자) + **defaultAssignee**(gitlab·github) | 계정 id/login |
+| Q5.7.6 | **상태 의미론 규약** — **jira**: To-Do/In-Progress/Done 상태명(`statusNames`, 로컬라이즈됨) / **gitlab·github**: 상태 라벨 규약(`statusLabels{inProgress, done}`) — To-Do=라벨 없음·In-Progress=`inProgress` 라벨·Done=closed[+`done` 라벨] | 플랫폼별 상태 원천(§1.2.1) |
+| Q5.7.7 | 인증은 `tracker.type` 이 결정(§1.2: jira Basic email+token / gitlab `PRIVATE-TOKEN` / github Bearer) — **토큰 저장 위치**(`.env` 변수명 또는 토큰 파일 *경로* — **값 아님**)만 포착 | 시크릿 경계 |
+
+> *시크릿 경계 (§3 자격증명 경계 / POLICY-TRACKING)*: 토큰 *값* 은 절대 인터뷰·기록하지 않는다. **경로·변수명만** config에 적고, 값은 머신별 시크릿 스토어(`.env` / 토큰 파일)에 사용자가 채운다. S8.5 `.env.example`에 트래커 토큰 키(값 없음)를 추가한다.
+> *기록 위치*: 응답은 **인스턴스 트래커 config 파일**(예: `{메타 레포}/ISSUE-TRACKER.md` — 인스턴스 스코프, 공유)에 `tracker.type` + type별 좌표로 기록한다. 상태 의미론은 플랫폼별로 다르게 온다 — jira는 상태명(로컬라이즈됨), gitlab·github은 상태 라벨명. (Jira 한정) 발견 메타(필드/이슈타입/전이/보드/스프린트/에픽 맵)는 런타임 캐시 자리로 둔다(ISSUE-TRACKER-AGENT가 채움). 트래커 미운영이면 파일을 만들지 않는다(조건부).
+
 ---
 
 ### 페이즈 2 — 자동 생성
@@ -286,6 +307,8 @@ cat > .env.example <<'EOF'
 GITLAB_TOKEN=
 FIGMA_KEY=
 WORKSPACE_ROOT=
+# (조건부) 이슈 트래커 API 토큰 — 값 금지. 토큰 파일 경로 또는 API 토큰 변수 (S5.7 운영 시)
+#   예: ISSUE_TRACKER_TOKEN_FILE=  (토큰을 담은 파일 경로) 또는 ISSUE_TRACKER_API_TOKEN=
 EOF
 # 2) .env 추적 제외 보장 (이미 있으면 중복 추가 안 함) — 개인(PERSONAL) 파일만 무시
 #    (POLICY-TRACKING) `.gitignore`는 *개인 파일만* 무시한다: 시크릿(`.env*`)·머신 로컬 설정.
