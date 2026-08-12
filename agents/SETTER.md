@@ -39,6 +39,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
     ├── REPO-MAP.template.md
     ├── CLAUDE.template.md
     ├── HANDOFF.template.md
+    ├── SELF-CHECK.template.md      ← 세션 자가점검 주입문 (S8.7 소비)
     ├── STACK.template.md
     ├── WORKFLOW.template.md
     ├── DESIGN.template.md
@@ -60,7 +61,11 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 
 (머신별 로컬 — 추적 안 됨, 공유 안 됨)
 {Q2.2}/{Q2.1}/.env                 ← 시크릿 값 (GitLab 토큰·Figma 키 등). 사용자가 채움. gitignore.
+{공유리포}/.claude/orchestrator-selfcheck.txt  ← S8.7 산출 — 자가점검 주입문 (UTF-8 no-BOM)
+{공유리포}/.claude/settings.local.json         ← S8.7 — UserPromptSubmit 훅 설정 (병합 쓰기)
 ```
+
+> **훅 산출물이 `dlc-meta`가 아니라 `{공유리포}` 아래인 이유**: 세션이 열리는 곳이 공유리포이기 때문. 그리고 **설정 파일 자체는 팀 공유하지 않는다** — 머신별 절대경로·개인 권한이 섞이므로 공유하면 충돌한다. 공유되는 것은 *추적된 템플릿*(`templates/SELF-CHECK.template.md`)뿐이고, 머신마다 SETTER가 각자 생성한다 (POLICY-TRACKING).
 
 본 명세에서 `{공유리포}`는 *클론된 `ai-dlc-orchestrator/` 디렉토리의 절대 경로*를 의미. 오케스트레이터가 이 경로를 SETTER에 전달한다.
 
@@ -72,7 +77,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 |---|---|
 | 종류 | 서브 에이전트 룰북 |
 | 호출 주체 | 오케스트레이터 에이전트 |
-| 수명 | **프로젝트당 첫 부트스트랩 1회(신규)**. 공유 `dlc-meta` 원격이 이미 있으면 **합류(clone, S7·S8 스킵)**. 추가 레포는 `REPO-CREATOR.md`가 처리 |
+| 수명 | **프로젝트당 첫 부트스트랩 1회(신규)**. 공유 `dlc-meta` 원격이 이미 있으면 **합류(clone, S7·S8 스킵)**. 추가 레포는 `REPO-CREATOR.md`가 처리. 부트스트랩이 끝난 뒤에도 **보수(repair) 모드**로 재호출될 수 있다 (S0 — 세션 자가점검 훅만 재설치, 인스턴스는 손대지 않음) |
 | 사용자 채널 | 직접 통신 없음. 모든 인터뷰는 *오케스트레이터를 통한다* |
 
 ---
@@ -88,6 +93,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 5. `{메타 레포}/cycles/` 디렉토리 자리 마련 (사이클 로그 저장소 — 형식 명세는 `CYCLE-LOG.md` 영역)
 6. **자격증명 부트스트랩** — `.env.example`(필요 키 매니페스트, 값 없음) 생성·갱신 + `.env` 자리 마련 + `.gitignore`에 `.env` 추적 제외 보장. 시크릿 *값은 사용자가 채움* (SETTER는 값을 적지 않음)
 6.5. **(조건부) 이슈 트래커 config 포착** — 시스템이 트래커를 운영하면(S5.7) 인스턴스 트래커 config 파일(예: `{메타 레포}/ISSUE-TRACKER.md`)에 **`tracker.type`(jira/gitlab/github) + type별 좌표**(§2.2: jira=베이스 URL·프로젝트 키·email·statusNames / gitlab=host·projectIdOrPath·statusLabels·defaultAssignee / github=owner·repo·statusLabels·defaultAssignee[·milestone])·리포터/사용자·트리아지 담당자·**토큰 저장 위치(경로·변수명만 — 값 금지)** 를 기록 (POLICY-ISSUE-TRACKING). **(Jira 한정)** 필드/이슈타입/전이/보드/스프린트/에픽 맵 등 발견 메타는 런타임에 `ISSUE-TRACKER-AGENT`가 채우는 캐시 자리로 둔다(gitlab·github은 고정 스키마라 불요). 트래커 미운영이면 스킵 (조건부)
+6.7. **오케스트레이터 세션 자가점검 훅 설치** (S8.7 — 신규·합류·보수 **모두 수행**) — `{공유리포}/.claude/`에 주입문 파일 + `UserPromptSubmit` 훅을 생성해, 오케스트레이터 정체성이 *매 프롬프트마다 기계적으로 재주입*되게 한다 (컨텍스트 압축 후 표류 방어). 산출물은 개인(PERSONAL) — 공유하지 않는다. 계약·본문의 단일 원천은 `templates/SELF-CHECK.template.md`
 7. 정합성 자체 체크 + 오케스트레이터에 결과 보고
 
 ### 비책임 (다른 산출물에 위임)
@@ -135,11 +141,35 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 ## 5. 실행 절차
 
 ```
+[페이즈 0] 모드 판정             →  S0        (보수 모드면 S8.7로 직행)
 [페이즈 1] 입력 수집 & 인터뷰   →  S1 ~ S5
-[페이즈 2] 자동 생성/합류        →  S6 ~ S8.5
+[페이즈 2] 자동 생성/합류        →  S6 ~ S8.7
 [페이즈 3] 검증 & 보고           →  S9
 [페이즈 4] 종료                  →  S10
 ```
+
+---
+
+### 페이즈 0 — 모드 판정
+
+#### S0. 부트스트랩 / 보수(repair) 모드 판정
+
+오케스트레이터는 부트스트랩이 *이미 끝난* 시스템에서도 SETTER를 **보수 모드**로 호출할 수 있다. 호출 컨텍스트에 보수 모드 지시가 있으면(리포 루트 `CLAUDE.md` §0.5 트리거 T1 미설치 / T2 구버전 / T3 명시 호출) 아래로 분기한다.
+
+| 모드 | 수행 | 스킵 |
+|---|---|---|
+| **신규** | S1 ~ S9 전체 | — |
+| **합류** | S1·S2·S6(clone)·S8.5·**S8.7**·S9 | S3~S5(인터뷰)·S7·S8·S8.6 (인스턴스 재생성 금지) |
+| **보수** | **S8.7 + S9(해당 항목만)** | S1 ~ S8.6 **전부** |
+
+**보수 모드 보호 규칙**:
+
+- 인스턴스(`ORCHESTRATOR.md`·`REPO-MAP.md`·`cycles/`)를 **절대 재생성·덮어쓰지 않는다.** 합류 분기와 동일한 보호 — 이미 팀이 채운 단일 원천을 훼손하면 복구 비용이 크다.
+- 인터뷰를 다시 하지 않는다 (Q2.x~Q5.x는 이미 인스턴스에 있다).
+- **멱등**이어야 한다 — 같은 계약 버전에서 두 번 돌려도 결과가 같다. 훅 항목이 중복 누적되면 결함.
+- 보수 대상이 아닌 것(예: 트래커 config·`.env`)은 건드리지 않는다.
+
+> 모드가 불분명하면 *추측하지 말고* 오케스트레이터에 되묻는다 (EX-4 응답 모호).
 
 ---
 
@@ -349,6 +379,56 @@ git push -u origin HEAD
 
 > 합류(clone)는 인스턴스가 이미 원격에 추적돼 있으므로 본 단계 해당 없음. 팀원은 clone으로 추적된 인스턴스를 받는다.
 
+#### S8.7. 오케스트레이터 세션 자가점검 훅 설치 (신규·합류·보수 **모두 수행**)
+
+> *목적*: 오케스트레이터 정체성이 **컨텍스트 압축 후에도 매 턴 기계적으로 되살아나게** 한다. 리포 루트 `CLAUDE.md`의 `@` 임포트는 *세션 시작 1회*를 보장하고, 본 훅은 *매 프롬프트*를 보장한다 — 둘은 대체 관계가 아니라 보완 관계다 (`CLAUDE.md` §0.5).
+> *산출 위치*: `dlc-meta`가 아니라 **`{공유리포}/.claude/`** (세션이 열리는 곳). 산출물은 **개인(PERSONAL)** 이며 `{공유리포}/.gitignore`가 이미 `.claude/settings*.json`을 제외한다 (POLICY-TRACKING).
+
+**(1) 주입문 파일 생성** — 원본: `{공유리포}/templates/SELF-CHECK.template.md` §2 「주입 본문」 (POLICY-TEMPLATE-ADHERENCE — 손수 작성 금지)
+
+- 산출: `{공유리포}/.claude/orchestrator-selfcheck.txt`
+- `{n}`은 템플릿 §1 `SELFCHECK-CONTRACT` 값(예: `v1` — `v` 포함)으로 치환. **첫 줄은 반드시 `[SELFCHECK {n}]`** (계약 v1이면 `[SELFCHECK v1]`) — 오케스트레이터의 자가보수 판정(T1·T2)이 오직 이 마커로 이뤄지므로 깨지면 자가보수가 영구 오작동한다. `v`를 덧붙여 `[SELFCHECK vv1]`이 되지 않게 주의.
+- **POLICY-ENCODING 필수**: 본문에 한국어가 있으므로 **직접 UTF-8(BOM 없음)·LF 파일 쓰기**. 로케일 의존 셸 출력(`echo`·리다이렉트·`type`·기본 `Set-Content`)으로 흘려보내지 말 것.
+
+**(2) 훅 명령 생성 — 적응형 (OS/셸 탐지)**
+
+훅은 파일을 **바이트 그대로** stdout으로 흘려야 한다. 셸이 재인코딩하면 mojibake가 된다. 실행 환경을 탐지해 아래 중 하나를 고른다:
+
+| 환경 | 명령 |
+|---|---|
+| POSIX 셸 사용 가능 (Linux·macOS·Git Bash·WSL) | `cat "{공유리포}/.claude/orchestrator-selfcheck.txt"` |
+| Windows, POSIX 셸 없음 | `powershell -NoProfile -Command "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); Get-Content -Raw -Encoding utf8 '{공유리포}\.claude\orchestrator-selfcheck.txt'"` |
+
+> **탐지는 추정하지 말고 실행해서 확인한다** — 후보 명령을 실제로 한 번 돌려 성공·출력 무손상을 본 뒤 채택. 두 경로 모두 실패하면 설치를 *성공으로 보고하지 말 것* (S9 FAIL). 새 환경(예: 다른 셸)이 나오면 같은 원칙으로 후보를 추가하되, **공유 룰북에 OS를 하드코딩하지 않는다** (적응형 어댑터 규율 — ISSUE-TRACKER-ADAPTER·DEPLOY-ADAPTER와 동일 패턴).
+
+**(3) 설정 병합** — 대상: `{공유리포}/.claude/settings.local.json` (개인 스코프)
+
+- **병합이지 덮어쓰기가 아니다.** 기존 `permissions` 등 사용자 키를 반드시 보존한다. 파일이 없으면 새로 만들고, 있으면 `hooks.UserPromptSubmit`만 추가·교체한다.
+- **중복 누적 금지** — 이미 같은 주입문을 가리키는 항목이 있으면 *교체*한다 (보수 모드 멱등성의 핵심).
+- 쓰기 전 원본을 `settings.local.json.bak`으로 백업한다 (JSON 파손 시 복구용).
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "<(2)에서 채택한 명령>" } ] }
+    ]
+  }
+}
+```
+
+**(4) 설치 검증 (POLICY-VERIFY — 필수. 통과 못 하면 실패 보고)**
+
+설치했다는 *클레임*이 아니라 실측이어야 한다:
+
+- (2)의 명령을 **실제로 실행**해 stdout을 받는다
+- 출력 첫 줄이 `[SELFCHECK {n}]`(예: `[SELFCHECK v1]`)로 시작하는가 (마커 성립 — 트리거 판정의 전제)
+- 출력에 U+FFFD·떠도는 `?`·BOM이 없고 템플릿 원문과 일치하는가 (POLICY-ENCODING)
+- `settings.local.json`이 **유효 JSON**이고 기존 사용자 키가 보존됐는가
+- `{공유리포}`에서 `git status`가 이 산출물들로 더러워지지 않는가 (gitignore 정상 — 개인 산출물이 추적되면 실패)
+
+> 훅 설정은 런타임 파일 워처가 자동 반영하므로 **세션 재시작은 불필요**하다. 다만 *이번 턴* 컨텍스트에는 아직 주입문이 없을 수 있고, 다음 프롬프트부터 나타난다 — 그 전에 T1(미설치)로 오판해 재설치를 반복하지 않도록 오케스트레이터에 "설치 완료·다음 턴부터 주입"을 명시해 보고한다.
+
 ---
 
 ### 페이즈 3 — 검증 & 보고
@@ -365,6 +445,9 @@ git push -u origin HEAD
 - **`.gitignore`가 공유 인스턴스를 무시하지 않는지** (ORCHESTRATOR.md·REPO-MAP.md·cycles/ — 무시하면 실패. POLICY-TRACKING: 개인 파일만 무시)
 - **(신규) 공유 인스턴스 추적·커밋 성사** (S8.6) — 커밋이 `git log`에 보이고 `HEAD == @{u}`(push 반영), 공유 인스턴스에 미추적 잔존 없음. 미성사면 **실패** (인스턴스가 로컬 잔존 → 팀 공유 불가)
 - 생성 파일이 **UTF-8(BOM 없음)** 인지 — U+FFFD·떠도는 `?`·BOM 없음 (POLICY-ENCODING)
+- **세션 자가점검 훅 설치 성사** (S8.7) — 훅 명령을 *실제로 실행*한 stdout이 `[SELFCHECK v{n}]`로 시작하고 무손상이며, `settings.local.json`이 유효 JSON + 기존 사용자 키 보존 + 개인 산출물이 추적되지 않음. 미성사면 **실패** (정체성 지속 보장이 없는 상태)
+
+> **보수 모드**에서는 위 항목 중 *세션 자가점검 훅* 항목만 검사·보고한다 (나머지는 손대지 않았으므로 판정 대상 아님).
 
 **오케스트레이터에 보고할 4가지**:
 
@@ -373,6 +456,7 @@ git push -u origin HEAD
    - `{메타 레포}/REPO-MAP.md` (공유 — 커밋·push됨, S8.6)
    - `{메타 레포}/cycles/` (디렉토리, 공유)
    - `{메타 레포}/.env.example`·`.gitignore` (공유) / `{메타 레포}/.env` (개인 — gitignore, 미추적)
+   - `{공유리포}/.claude/orchestrator-selfcheck.txt`·`settings.local.json` (**개인** — gitignore, 미추적. S8.7) + 채택한 훅 명령과 **실행 검증 결과 원문**
 2. **정합성 체크 결과** — 항목별 통과/실패 + 실패 사유
 3. **인터뷰 응답 원본** — Q2.x ~ Q5.x 사용자 답변
 4. **권고 다음 단계**:
@@ -400,8 +484,11 @@ git push -u origin HEAD
 |---|---|
 | `{메타 레포}/ORCHESTRATOR.md` (**시스템 스코프**) | `{공유리포}/templates/ORCHESTRATOR.template.md` |
 | `{메타 레포}/REPO-MAP.md` (**시스템 스코프**) | `{공유리포}/templates/REPO-MAP.template.md` |
+| `{공유리포}/.claude/orchestrator-selfcheck.txt` (**머신 로컬·개인**) | `{공유리포}/templates/SELF-CHECK.template.md` |
 
 템플릿 본문 변경은 *깃 PR/머지*로만 (원칙 8). SETTER는 *항상 현재 main의 템플릿*을 읽어 인스턴스를 채운다 (POLICY-TEMPLATE-ADHERENCE).
+
+앞의 두 개는 **인터뷰로 채우는 공유 인스턴스**이고, 세 번째는 **인터뷰 없이 생성되는 머신 로컬 개인 산출물**이다 (계약 버전과 본문이 템플릿에 이미 고정돼 있어 물을 것이 없다). 그래서 아래 「스코프 경계」의 "인터뷰→템플릿 생성 = 두 개뿐"과 모순되지 않는다.
 
 > **스코프 경계 (다른 템플릿은 SETTER가 생성하지 않음)**: `WORKFLOW`·`DESIGN`은 시스템 레벨에서 *PR/머지로 관리되는 명세*(`specs/SYSTEM-WORKFLOW.md` 및 그 동반 시스템 가이드)로 재포지셔닝됨 — *부트스트랩 인터뷰로 매번 생성되는 인스턴스가 아니다*(자동 생성 대상 아님). `CLAUDE`·`STACK`·`CODING`·`FRAMEWORK`·`CHECKLIST`는 **레포 스코프**로, REPO-SETTER(RP5.5 동반 템플릿 + RP6 AWS Extension)가 레포마다 생성한다. 따라서 SETTER가 인터뷰→템플릿으로 *생성*하는 시스템 인스턴스는 위 두 개(ORCHESTRATOR·REPO-MAP)뿐이며, 시스템 전역 컨벤션(S5.5)은 새 인스턴스 파일을 만들지 않고 *ORCHESTRATOR 인스턴스의 `{SYSTEM_CONVENTIONS}` 섹션*에 기록한다(중복·스코프 충돌 방지).
 
