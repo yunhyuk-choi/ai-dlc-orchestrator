@@ -382,7 +382,9 @@ git push -u origin HEAD
 #### S8.7. 오케스트레이터 세션 자가점검 훅 설치 (신규·합류·보수 **모두 수행**)
 
 > *목적*: 오케스트레이터 정체성이 **컨텍스트 압축 후에도 매 턴 기계적으로 되살아나게** 한다. 리포 루트 `CLAUDE.md`의 `@` 임포트는 *세션 시작 1회*를 보장하고, 본 훅은 *매 프롬프트*를 보장한다 — 둘은 대체 관계가 아니라 보완 관계다 (`CLAUDE.md` §0.5).
-> *산출 위치*: `dlc-meta`가 아니라 **`{공유리포}/.claude/`** (세션이 열리는 곳). 산출물은 **개인(PERSONAL)** 이며 `{공유리포}/.gitignore`가 이미 `.claude/settings*.json`을 제외한다 (POLICY-TRACKING).
+> *산출 위치*: `dlc-meta`가 아니라 **`{공유리포}/.claude/`** (세션이 열리는 곳). 산출물은 **개인(PERSONAL)** 이다 (POLICY-TRACKING).
+>
+> **추적 제외 선결 확인**: `{공유리포}/.gitignore`가 아래 셋을 모두 제외하는지 확인하고, 빠졌으면 *설치 전에* 채운다 — `.claude/settings.local.json` · `.claude/settings.local.json.bak` · `.claude/orchestrator-selfcheck.txt`. 하나라도 빠지면 개인 산출물이 공유 리포에 추적돼 팀원 머신 값이 서로 덮어쓰인다.
 
 **(1) 주입문 파일 생성** — 원본: `{공유리포}/templates/SELF-CHECK.template.md` §2 「주입 본문」 (POLICY-TEMPLATE-ADHERENCE — 손수 작성 금지)
 

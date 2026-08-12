@@ -1,6 +1,12 @@
 # Machine-local / personal tooling config (absolute machine paths, local state)
 .claude/settings.local.json
 .claude/settings.json
+.claude/settings.local.json.bak
+
+# Session self-check injection text — generated per machine by SETTER S8.7 from
+# templates/SELF-CHECK.template.md (the tracked single source). PERSONAL artifact:
+# it is regenerated locally, never shared (POLICY-TRACKING).
+.claude/orchestrator-selfcheck.txt
 
 # Node tooling noise
 node_modules/
