@@ -8,6 +8,10 @@
 # it is regenerated locally, never shared (POLICY-TRACKING).
 .claude/orchestrator-selfcheck.txt
 
+# Marker written when the hook cannot be installed in this environment (EX-15).
+# Suppresses repair-loop retries. PERSONAL and machine-specific by definition.
+.claude/orchestrator-selfcheck.unavailable
+
 # Node tooling noise
 node_modules/
 
