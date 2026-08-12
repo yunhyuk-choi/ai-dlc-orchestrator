@@ -63,6 +63,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 {Q2.2}/{Q2.1}/.env                 ← 시크릿 값 (GitLab 토큰·Figma 키 등). 사용자가 채움. gitignore.
 {공유리포}/.claude/orchestrator-selfcheck.txt  ← S8.7 산출 — 자가점검 주입문 (UTF-8 no-BOM)
 {공유리포}/.claude/settings.local.json         ← S8.7 — UserPromptSubmit 훅 설정 (병합 쓰기)
+{공유리포}/.claude/orchestrator-selfcheck.unavailable ← S8.7 (5) — 설치 불가 마커 (EX-15, 재시도 억제)
 ```
 
 > **훅 산출물이 `dlc-meta`가 아니라 `{공유리포}` 아래인 이유**: 세션이 열리는 곳이 공유리포이기 때문. 그리고 **설정 파일 자체는 팀 공유하지 않는다** — 머신별 절대경로·개인 권한이 섞이므로 공유하면 충돌한다. 공유되는 것은 *추적된 템플릿*(`templates/SELF-CHECK.template.md`)뿐이고, 머신마다 SETTER가 각자 생성한다 (POLICY-TRACKING).
@@ -384,7 +385,7 @@ git push -u origin HEAD
 > *목적*: 오케스트레이터 정체성이 **컨텍스트 압축 후에도 매 턴 기계적으로 되살아나게** 한다. 리포 루트 `CLAUDE.md`의 `@` 임포트는 *세션 시작 1회*를 보장하고, 본 훅은 *매 프롬프트*를 보장한다 — 둘은 대체 관계가 아니라 보완 관계다 (`CLAUDE.md` §0.5).
 > *산출 위치*: `dlc-meta`가 아니라 **`{공유리포}/.claude/`** (세션이 열리는 곳). 산출물은 **개인(PERSONAL)** 이다 (POLICY-TRACKING).
 >
-> **추적 제외 선결 확인**: `{공유리포}/.gitignore`가 아래 셋을 모두 제외하는지 확인하고, 빠졌으면 *설치 전에* 채운다 — `.claude/settings.local.json` · `.claude/settings.local.json.bak` · `.claude/orchestrator-selfcheck.txt`. 하나라도 빠지면 개인 산출물이 공유 리포에 추적돼 팀원 머신 값이 서로 덮어쓰인다.
+> **추적 제외 선결 확인**: `{공유리포}/.gitignore`가 아래 넷을 모두 제외하는지 확인하고, 빠졌으면 *설치 전에* 채운다 — `.claude/settings.local.json` · `.claude/settings.local.json.bak` · `.claude/orchestrator-selfcheck.txt` · `.claude/orchestrator-selfcheck.unavailable`. 하나라도 빠지면 개인 산출물이 공유 리포에 추적돼 팀원 머신 값이 서로 덮어쓰인다.
 
 **(1) 주입문 파일 생성** — 원본: `{공유리포}/templates/SELF-CHECK.template.md` §2 「주입 본문」 (POLICY-TEMPLATE-ADHERENCE — 손수 작성 금지)
 
@@ -401,7 +402,8 @@ git push -u origin HEAD
 | POSIX 셸 사용 가능 (Linux·macOS·Git Bash·WSL) | `cat "{공유리포}/.claude/orchestrator-selfcheck.txt"` |
 | Windows, POSIX 셸 없음 | `powershell -NoProfile -Command "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new(); Get-Content -Raw -Encoding utf8 '{공유리포}\.claude\orchestrator-selfcheck.txt'"` |
 
-> **탐지는 추정하지 말고 실행해서 확인한다** — 후보 명령을 실제로 한 번 돌려 성공·출력 무손상을 본 뒤 채택. 두 경로 모두 실패하면 설치를 *성공으로 보고하지 말 것* (S9 FAIL). 새 환경(예: 다른 셸)이 나오면 같은 원칙으로 후보를 추가하되, **공유 룰북에 OS를 하드코딩하지 않는다** (적응형 어댑터 규율 — ISSUE-TRACKER-ADAPTER·DEPLOY-ADAPTER와 동일 패턴).
+> **탐지는 추정하지 말고 실행해서 확인한다** — 후보 명령을 실제로 한 번 돌려 성공·출력 무손상을 본 뒤 채택. 새 환경(예: 다른 셸)이 나오면 같은 원칙으로 후보를 추가하되, **공유 룰북에 OS를 하드코딩하지 않는다** (적응형 어댑터 규율 — ISSUE-TRACKER-ADAPTER·DEPLOY-ADAPTER와 동일 패턴).
+> **모든 후보가 실패하면 성공으로 보고하지 말되, 실패로 중단하지도 않는다 → (5) degraded 확정 절차로 간다** (EX-15 / C FALLBACK).
 
 **(3) 설정 병합** — 대상: `{공유리포}/.claude/settings.local.json` (개인 스코프)
 
@@ -431,6 +433,23 @@ git push -u origin HEAD
 
 > 훅 설정은 런타임 파일 워처가 자동 반영하므로 **세션 재시작은 불필요**하다. 다만 *이번 턴* 컨텍스트에는 아직 주입문이 없을 수 있고, 다음 프롬프트부터 나타난다 — 그 전에 T1(미설치)로 오판해 재설치를 반복하지 않도록 오케스트레이터에 "설치 완료·다음 턴부터 주입"을 명시해 보고한다.
 
+**(5) 설치 불가 확정 — degraded 확정 절차 (EX-15 / C FALLBACK)**
+
+> 훅을 만들 수 없는 환경은 *정상 케이스*다 (훅 미지원 런타임 · 셸/쓰기 권한 없음 · 정책 차단 · 사람 없는 자동 기동 세션). **훅은 보강이지 전제가 아니다** — 정체성 *로드*는 리포 루트 `CLAUDE.md`의 임포트가 이미 보장하고, 훅은 *지속*만 담당한다.
+
+- **중단하지 않는다.** 부트스트랩·합류·사이클을 실패로 끝내지 않고, 사용자 컨펌을 기다리지도 않는다 (사람 없는 세션이 정상 케이스). **ABORT·PAUSE로 격상 금지.**
+- **실패 층위를 가른다** (추정 금지 — 실제 에러 본문을 읽는다): 셸 부재 / 권한 / 훅 미지원 / **인코딩 손상**. 인코딩 손상은 *설치 불가가 아니라 후보 교체 사유*다 — 다른 후보로 재시도한다.
+- **설치 불가로 확정되면 억제 마커를 남긴다**:
+
+  - 경로: `{공유리포}/.claude/orchestrator-selfcheck.unavailable` (개인 — gitignore)
+  - 내용: 실패 층위 + 시도한 후보 명령 + 실제 에러 요지 (다음에 왜 안 되는지 사람이 읽을 수 있게)
+  - 효과: 오케스트레이터가 이후 **T1·T2를 발동시키지 않는다** (`CLAUDE.md` §0.5 (5)) — 무한 재시도·반복 통지 방지
+  - 마커조차 쓸 수 없는 읽기전용 환경이면 *세션당 1회* 시도 한도가 대신 막는다
+
+- **사용자 통지는 최초 1회만.** 대화형 세션이면 degraded 진입 사실과 사유를 한 번 알리고, 이후 반복하지 않는다.
+- **T3(사용자 명시 호출)은 마커를 무시하고 재시도**한다 — 환경이 바뀌었을 수 있다. 성공하면 마커를 **삭제**한다.
+- 보수 모드로 재진입해 성공한 경우에도 마커를 삭제한다 (멱등).
+
 ---
 
 ### 페이즈 3 — 검증 & 보고
@@ -447,7 +466,9 @@ git push -u origin HEAD
 - **`.gitignore`가 공유 인스턴스를 무시하지 않는지** (ORCHESTRATOR.md·REPO-MAP.md·cycles/ — 무시하면 실패. POLICY-TRACKING: 개인 파일만 무시)
 - **(신규) 공유 인스턴스 추적·커밋 성사** (S8.6) — 커밋이 `git log`에 보이고 `HEAD == @{u}`(push 반영), 공유 인스턴스에 미추적 잔존 없음. 미성사면 **실패** (인스턴스가 로컬 잔존 → 팀 공유 불가)
 - 생성 파일이 **UTF-8(BOM 없음)** 인지 — U+FFFD·떠도는 `?`·BOM 없음 (POLICY-ENCODING)
-- **세션 자가점검 훅 설치 성사** (S8.7) — 훅 명령을 *실제로 실행*한 stdout이 `[SELFCHECK v{n}]`로 시작하고 무손상이며, `settings.local.json`이 유효 JSON + 기존 사용자 키 보존 + 개인 산출물이 추적되지 않음. 미성사면 **실패** (정체성 지속 보장이 없는 상태)
+- **세션 자가점검 훅 설치 성사** (S8.7) — 훅 명령을 *실제로 실행*한 stdout이 `[SELFCHECK {n}]`로 시작하고 무손상이며, `settings.local.json`이 유효 JSON + 기존 사용자 키 보존 + 개인 산출물이 추적되지 않음.
+  - 미성사이되 **환경 제약으로 설치 불가**면(S8.7 (5) 절차 완료 — 마커 기록 또는 세션 1회 한도 적용) **`SKIPPED(degraded, 사유)`** 로 보고한다. **FAIL 아님** — EX-15는 C FALLBACK이고 부트스트랩은 성공이다.
+  - 설치 가능한 환경인데 절차 미이행·검증 누락으로 미성사면 **FAIL** (POLICY-VERIFY — 클레임만 하고 실측을 안 한 경우가 여기다)
 
 > **보수 모드**에서는 위 항목 중 *세션 자가점검 훅* 항목만 검사·보고한다 (나머지는 손대지 않았으므로 판정 대상 아님).
 

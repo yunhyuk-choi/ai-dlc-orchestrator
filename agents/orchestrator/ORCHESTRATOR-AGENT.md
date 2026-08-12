@@ -215,9 +215,9 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
 | **D** PAUSE | 그레이스풀 중단 + 상태 저장 |
 | **E** ABORT | 즉시 중단 + 에러 보고 |
 
-### 6.2 예외 목록 (EX-1 ~ EX-13)
+### 6.2 예외 목록 (EX-1 ~ EX-15)
 
-EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4 응답 모호 / EX-5 사용자 취소 / EX-6 정합성 실패 / EX-7 execution-plan 실패 / EX-8 결합점 검증 실패 / **EX-9 컨텍스트 한도 → HANDOFF-WRITER** / EX-10 분기점 결정 불능 / EX-11 룰북 변경 / **EX-12 검증 미수행/실패 → 재검증 (POLICY-VERIFY)** / EX-13 권한·스코프 실패 → 사람 게이트
+EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4 응답 모호 / EX-5 사용자 취소 / EX-6 정합성 실패 / EX-7 execution-plan 실패 / EX-8 결합점 검증 실패 / **EX-9 컨텍스트 한도 → HANDOFF-WRITER** / EX-10 분기점 결정 불능 / EX-11 룰북 변경 / **EX-12 검증 미수행/실패 → 재검증 (POLICY-VERIFY)** / EX-13 권한·스코프 실패 → 사람 게이트 / EX-14 배포·롤백 실패 → 자동 롤백 (prod는 사람 에스컬레이트, POLICY-DEPLOY) / **EX-15 자가점검 훅 설치 불가 → C FALLBACK (degraded 계속, 중단 금지)**
 
 예외 감지 시 → ERROR-POLICY.md 해당 항목 참조.
 
