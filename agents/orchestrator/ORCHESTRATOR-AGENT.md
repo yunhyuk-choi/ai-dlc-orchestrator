@@ -270,7 +270,7 @@ EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4
 | `ai-dlc-orchestrator/templates/ORCHESTRATOR.template.md` | 시스템 인스턴스 템플릿 | SETTER가 채워 `dlc-meta/ORCHESTRATOR.md` 생성 |
 | `ai-dlc-orchestrator/templates/REPO-MAP.template.md` | 시스템 단위 레포 인벤토리 | 영향 분석 입력 원천 |
 | `ai-dlc-orchestrator/templates/RETROSPECTIVE.template.md` | 사이클 회고 산출 단일 원천 | TERMINATION §4.4 회고 → EVOLUTION 입력 포맷 |
-| `dlc-meta/ORCHESTRATOR.md` | 시스템 인스턴스 | 운영 시 본 룰북 참조하는 인스턴스 |
+| `dlc-meta/ORCHESTRATOR.md` | 시스템 인스턴스 | 운영 시 본 룰북 참조하는 인스턴스. **시스템 전역 컨벤션 + (조건부) 축적 지식 원천 좌표·접근 규율의 단일 원천** — 지식 원천 섹션이 있으면 *착수 전 조회*(§4.1 [1]~[2]) / *작업 후 갱신*(로컬 세션 한정, 헤드리스는 조회만) / 큐레이션 규칙을 그 섹션대로 따른다 (SETTER S5.8 기록) |
 | `dlc-meta/REPO-MAP.md` | 시스템 도메인↔레포 매핑 | 단일 원천 (원칙 6) |
 | `dlc-meta/cycles/{cycle-id}/audit.md` | 사이클 단위 결정 추적 | 결정·예외 기록 |
 | `dlc-meta/cycles/{cycle-id}/handoff-v{n}.md` | 핸드오프 산출 인스턴스 | EX-9 산출 위치 |
