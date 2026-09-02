@@ -22,6 +22,7 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
 - **통합·테스트·커밋** — 결과를 통합하고, 시스템 테스트·빌드 후, 다중 레포 커밋까지 조율한다.
 - **CI/CD 부착·릴리스** — 레포별 CI/CD를 적응적으로 부착·통합(기존 탐지·분석 / 신규 생성)하고, 시스템 필수 게이트를 얹어 릴리스까지 잇는다.
 - **적응형 환경 배포** — 검증된 릴리스를 환경에 배포한다. non-prod는 자율, prod는 사람 게이트, 배포 후 지상검증·자동 롤백. *설계→배포* end-to-end (조건부).
+- **사이클↔티켓 바인딩** — 이슈 트래커(Jira·GitLab·GitHub)를 쓰면 사이클을 티켓에 묶어 생성·진행·완료를 트래커와 동기화한다 (조건부).
 - **사이클 로그·진화** — 작업을 기록하고, 사용 패턴을 학습해 룰북 개선을 능동 제안한다.
 
 ---
@@ -41,6 +42,7 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
 
 > **3계층**은 *무엇이 어디에 사는가*를 가른다 — 룰북(Layer 0)은 전 조직 공용이고, 그 팀의 사실(Layer 1)은 팀 공유 원격에만 있다.
 > 아래 **2-레벨**은 *누가 무엇을 하는가*를 가른다 — 시스템 레벨은 오케스트레이터가, 레포 내부는 AWS AI-DLC가 맡는다.
+> 그림의 **조건부 어댑터**(이슈 트래커 · CI/CD · 배포 · 축적 지식 원천)는 *있으면 붙고 없으면 조용히 빠지는* 선택 요소다 — 부트스트랩 인터뷰에서 좌표를 잡고, 없는 시스템도 그대로 돈다.
 
 ### 2-레벨 분업 + 팀 비유
 
@@ -78,11 +80,13 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
 
 2. **에이전트로 열기** — 이 리포를 에이전트 런타임(예: Claude Code)에서 연다. 루트의 **[`CLAUDE.md`](CLAUDE.md)** 가 세션 시작 시 자동으로 읽혀 오케스트레이터(팀장) 정체성을 부트스트랩한다. 갓 클론한 리포도 이 파일 하나로 자력 시작한다.
 
-3. **첫 실행 (1회 부트스트랩)** — 시스템 인스턴스가 아직 없으면 오케스트레이터가 **`SETTER`** 를 먼저 호출한다. SETTER가 인터뷰로 프로젝트를 파악하고(어떤 레포·역할·스택·컨벤션·응답 언어), 레포마다 **`REPO-SETTER`** 가 AWS 룰셋 + 필요한 Extension을 설치한다. 결과로 **프로젝트에 특화된, 깃 추적되는 규칙 파일들**이 생성된다.
+3. **첫 실행 (1회 부트스트랩)** — 시스템 인스턴스가 아직 없으면 오케스트레이터가 **`SETTER`** 를 먼저 호출한다. SETTER가 인터뷰로 프로젝트를 파악하고(어떤 레포·역할·스택·컨벤션·응답 언어 + *조건부* 이슈 트래커 좌표·축적 지식 원천(설계 문서·과거 결정 등 — 착수 전 조회하도록)·붙일 하네스), 레포마다 **`REPO-SETTER`** 가 AWS 룰셋 + 필요한 Extension을 설치한다. 결과로 **프로젝트에 특화된, 깃 추적되는 규칙 파일들**이 생성된다.
 
 4. **일상 사용** — 오케스트레이터에게 **자연어로 지시**하면, 인텐트 유형을 자동 분류해 그에 맞는 STEP 경로를 실행한다.
 
    > 예: *"결제 모듈에 쿠폰 기능 추가해줘"* → 영향 레포 분해(결제·주문·프론트) → cross-repo API 계약 설계(사용자 한 번 확인) → 각 레포 AWS 위탁 → 통합·테스트 → 다중 레포 커밋. **사용자는 설계를 한 번 확인하고 결과를 받는다.**
+
+5. **(선택) 하네스 붙이기** — 부트스트랩을 마쳤으면, 이 프레임워크를 *바깥에서 구동*하는 별도 시스템(**하네스**)을 붙일 수 있다(예: 티켓이 할당되면 그 사람 정체성으로 오케스트레이터를 자율 실행). 목록·진입 방법은 [`specs/HARNESS-CATALOG.md`](specs/HARNESS-CATALOG.md) — 프레임워크는 *목록만* 갖고 온보딩 지식은 각 하네스 레포가 소유한다. ⚠️ 아래 `templates/extensions/`(AWS 레포 룰 확장)와는 **다른 개념**이다.
 
 인텐트 유형 예: *새 기능 개발*(STEP 0~10 풀 사이클), *변경·수정*(STEP 1~9), *분석·조사*(STEP 1~2, 코드 변경 없이 보고), 그 외 *추가 레포 / 사이클 종료 / 시스템 부트스트랩 / 진화·메타*.
 
@@ -99,6 +103,7 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
   - [`REPO-CREATOR.md`](agents/REPO-CREATOR.md) — 새 레포 생성
   - [`CICD-SETTER.md`](agents/CICD-SETTER.md) — 레포별 CI/CD 부착·통합 (기존 탐지 / 신규 생성, 조건부)
   - [`DEPLOY-AGENT.md`](agents/DEPLOY-AGENT.md) — 적응형 환경 배포 (non-prod 자율 / prod 사람 게이트, 조건부)
+  - [`ISSUE-TRACKER-AGENT.md`](agents/ISSUE-TRACKER-AGENT.md) — 사이클↔티켓 바인딩 실행: 티켓 생성·전이·코멘트 (jira/gitlab/github, 조건부)
   - [`CYCLE-CLOSER.md`](agents/CYCLE-CLOSER.md) — 사이클 종료 후처리 (기록 최종화·보고)
   - [`HANDOFF-WRITER.md`](agents/HANDOFF-WRITER.md) — 세션 이관 문서 자동 작성
 
@@ -110,13 +115,15 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
   - [`VERIFICATION.md`](specs/VERIFICATION.md) — 검증·지상검증 규율 (**POLICY-VERIFY**)
   - [`CICD-RELEASE-ADAPTER.md`](specs/CICD-RELEASE-ADAPTER.md) — CI/CD·릴리스 머신 통합 (**POLICY-RELEASE**, 조건부)
   - [`DEPLOY-ADAPTER.md`](specs/DEPLOY-ADAPTER.md) — 환경 배포 룰: 환경 모델·전략·prod 사람 게이트·health·롤백 (**POLICY-DEPLOY**, 조건부)
+  - [`ISSUE-TRACKER-ADAPTER.md`](specs/ISSUE-TRACKER-ADAPTER.md) — 사이클↔티켓 바인딩 룰 + 플랫폼 매핑 (**POLICY-ISSUE-TRACKING**, 조건부)
+  - [`HARNESS-CATALOG.md`](specs/HARNESS-CATALOG.md) — 선택적 **하네스** 목록 (프레임워크를 바깥에서 구동하는 외부 시스템 — 목록만, 조건부)
 
 - **[`templates/`](templates/) — 채워서 인스턴스를 찍어내는 원본**
   - 시스템·핸드오프: `ORCHESTRATOR` · `REPO-MAP` · `HANDOFF` · `RETROSPECTIVE`
   - 레포 템플릿 7종: `CLAUDE` · `STACK` · `WORKFLOW` · `DESIGN` · `CHECKLIST` · `CODING` · `FRAMEWORK`
   - [`extensions/`](templates/extensions/) — 레포에 선택 적용하는 AWS Extension: `quality`(체크리스트) · `coding`(코딩 규칙) · `framework`(프레임워크 패턴)
 
-> **공통 정책의 정본**은 [`SYSTEM-WORKFLOW.md §3.1`](specs/SYSTEM-WORKFLOW.md) — `POLICY-ENCODING` · `POLICY-TEMPLATE-ADHERENCE` · `POLICY-TRACKING`. 횡단 규율 `POLICY-VERIFY`는 [`VERIFICATION.md`](specs/VERIFICATION.md), `POLICY-RELEASE`는 [`CICD-RELEASE-ADAPTER.md`](specs/CICD-RELEASE-ADAPTER.md), `POLICY-DEPLOY`는 [`DEPLOY-ADAPTER.md`](specs/DEPLOY-ADAPTER.md)에 둔다. 전 에이전트가 같은 라벨 체계로 이를 참조한다.
+> **공통 정책의 정본**은 [`SYSTEM-WORKFLOW.md §3.1`](specs/SYSTEM-WORKFLOW.md) — `POLICY-ENCODING` · `POLICY-TEMPLATE-ADHERENCE` · `POLICY-TRACKING`. 횡단 규율 `POLICY-VERIFY`는 [`VERIFICATION.md`](specs/VERIFICATION.md), `POLICY-RELEASE`는 [`CICD-RELEASE-ADAPTER.md`](specs/CICD-RELEASE-ADAPTER.md), `POLICY-DEPLOY`는 [`DEPLOY-ADAPTER.md`](specs/DEPLOY-ADAPTER.md), `POLICY-ISSUE-TRACKING`은 [`ISSUE-TRACKER-ADAPTER.md`](specs/ISSUE-TRACKER-ADAPTER.md)에 둔다. 전 에이전트가 같은 라벨 체계로 이를 참조한다.
 
 ---
 
