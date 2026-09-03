@@ -92,4 +92,4 @@
 | `ai-dlc-orchestrator/agents/ISSUE-TRACKER-AGENT.md` | 본 config의 소비자(실행 주체) + §4 캐시의 기록 주체 |
 | `ai-dlc-orchestrator/agents/SETTER.md` S5.7·S7.5 | 본 인스턴스의 포착·생성 주체 |
 | `dlc-meta/ORCHESTRATOR.md` | 시스템 인스턴스 — 사이클↔티켓 바인딩(책임 7)의 운영 컨텍스트 |
-| `{메타 레포}/.env` (개인 — gitignore) | 위 `tokenPath`가 가리키는 **값**이 사는 곳 (여기엔 값 금지) |
+| 메타 레포 루트의 `.env` (개인 — gitignore) | 위 `tokenPath`가 가리키는 **값**이 사는 곳 (여기엔 값 금지) |
