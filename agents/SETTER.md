@@ -41,6 +41,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
     ├── CLAUDE.template.md
     ├── HANDOFF.template.md
     ├── SELF-CHECK.template.md      ← 세션 자가점검 주입문 (S8.7 소비)
+    ├── ISSUE-TRACKER.template.md   ← 트래커 config 인스턴스 (S7.5 소비, 조건부)
     ├── STACK.template.md
     ├── WORKFLOW.template.md
     ├── DESIGN.template.md
@@ -56,19 +57,24 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 {Q2.2}/{Q2.1}/                     ← 메타 레포 (예: /workspace/dlc-meta), 원격 = {Q2.4}
 ├── ORCHESTRATOR.md                ← S7 산출 (공유)
 ├── REPO-MAP.md                    ← S8 산출 (공유)
+├── ISSUE-TRACKER.md               ← S7.5 산출 (공유, **조건부** — 트래커 운영 시에만)
 ├── .env.example                   ← S8.5 산출 — 필요 시크릿 키 매니페스트 (값 없음, 공유)
 ├── .gitignore                     ← S8.5 — `.env` 추적 제외 보장
+├── .gitattributes                 ← S8.5 — LF 정규화 강제 (POLICY-ENCODING)
 └── cycles/                        ← 사이클 로그 저장소 (S6 생성, 공유)
+    └── .gitkeep                   ← S6 — 빈 디렉토리를 깃이 추적하게 하는 자리표
 
 (머신별 로컬 — 추적 안 됨, 공유 안 됨)
 {Q2.2}/{Q2.1}/.env                 ← 시크릿 값 (GitLab 토큰·Figma 키 등). 사용자가 채움. gitignore.
+{공유리포}/.claude/dlc-meta-location.txt       ← S6.5 산출 — 메타 레포 위치 마커 (절대 경로 — 머신별)
 {공유리포}/.claude/orchestrator-selfcheck.txt  ← S8.7 산출 — 자가점검 주입문 (UTF-8 no-BOM)
 {공유리포}/.claude/settings.local.json         ← S8.7 — UserPromptSubmit 훅 설정 (병합 쓰기)
 {공유리포}/.claude/orchestrator-selfcheck.unavailable ← S8.7 (5) — 설치 불가 마커 (EX-15, 재시도 억제)
 {Q2.2}/{하네스 레포명}/            ← S9.5-a 클론 — 선택한 하네스 레포 (온보딩 룰북 소유). 메타 레포의 *형제*, 어느 공유 레포에도 추적 안 됨
 ```
 
-> **훅 산출물이 `dlc-meta`가 아니라 `{공유리포}` 아래인 이유**: 세션이 열리는 곳이 공유리포이기 때문. 그리고 **설정 파일 자체는 팀 공유하지 않는다** — 머신별 절대경로·개인 권한이 섞이므로 공유하면 충돌한다. 공유되는 것은 *추적된 템플릿*(`templates/SELF-CHECK.template.md`)뿐이고, 머신마다 SETTER가 각자 생성한다 (POLICY-TRACKING).
+> **훅 산출물·위치 마커가 `dlc-meta`가 아니라 `{공유리포}` 아래인 이유**: 세션이 열리는 곳이 공유리포이기 때문. 그리고 **머신별 파일 자체는 팀 공유하지 않는다** — 절대경로·개인 권한이 섞이므로 공유하면 충돌한다. 공유되는 것은 *추적된 템플릿·룰북*뿐이고, 머신마다 SETTER가 각자 생성한다 (POLICY-TRACKING).
+> 특히 **위치 마커(`dlc-meta-location.txt`)에는 절대 경로가 들어간다** — 같은 팀이라도 메타 레포를 체크아웃한 위치는 머신마다 다르다(`/workspace/dlc-meta` · `C:\workspace\dlc-meta` · `/home/…`). 그래서 이 값은 *구조적으로* 공유 불가이며, 개인(PERSONAL)·gitignore 산출물이어야 한다. 공유 인스턴스(`REPO-MAP.md`)가 절대 경로 대신 원격 URL을 식별자로 쓰는 것과 같은 이유다 (D-Stage4-3).
 
 본 명세에서 `{공유리포}`는 *클론된 `ai-dlc-orchestrator/` 디렉토리의 절대 경로*를 의미. 오케스트레이터가 이 경로를 SETTER에 전달한다.
 
@@ -80,7 +86,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 |---|---|
 | 종류 | 서브 에이전트 룰북 |
 | 호출 주체 | 오케스트레이터 에이전트 |
-| 수명 | **프로젝트당 첫 부트스트랩 1회(신규)**. 공유 `dlc-meta` 원격이 이미 있으면 **합류(clone, S7·S8 스킵)**. 추가 레포는 `REPO-CREATOR.md`가 처리. 부트스트랩이 끝난 뒤에도 **보수(repair) 모드**로 재호출될 수 있다 (S0 — 세션 자가점검 훅만 재설치, 인스턴스는 손대지 않음) |
+| 수명 | **프로젝트당 첫 부트스트랩 1회(신규)**. 공유 `dlc-meta` 원격이 이미 있으면 **합류(clone, S7·S8 스킵)**. 추가 레포는 `REPO-CREATOR.md`가 처리. 부트스트랩이 끝난 뒤에도 **보수(repair) 모드**로 재호출될 수 있다 (S0 — 개인·머신 로컬 산출물인 *세션 자가점검 훅*(S8.7)과 *메타 레포 위치 마커*(S6.5)만 재생성, 인스턴스는 손대지 않음) |
 | 사용자 채널 | 직접 통신 없음. 모든 인터뷰는 *오케스트레이터를 통한다* |
 
 ---
@@ -93,9 +99,10 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 2. **신규**: 메타 레포(`{Q2.2}/{Q2.1}/`) 생성 + 공유 원격(`{Q2.4}`) 연결·push / **합류**: 공유 원격 clone (이 경우 3·4 스킵)
 3. `{메타 레포}/ORCHESTRATOR.md` 인스턴스 생성 (템플릿 채움) — *신규만*
 4. `{메타 레포}/REPO-MAP.md` 인스턴스 생성 (템플릿 채움) — *신규만*
-5. `{메타 레포}/cycles/` 디렉토리 자리 마련 (사이클 로그 저장소 — 형식 명세는 `CYCLE-LOG.md` 영역)
+5. `{메타 레포}/cycles/` 디렉토리 자리 마련 + `.gitkeep` 자리표 (빈 디렉토리는 깃이 추적하지 않는다 — 자리표가 없으면 *공유 인스턴스인 `cycles/`가 영영 추적되지 않는다*)
+5.5. **메타 레포 위치 마커 기록** (S6.5 — 신규·합류·보수 **모두 수행**) — `{공유리포}/.claude/dlc-meta-location.txt`(개인·gitignore)에 메타 레포의 *로컬 절대 경로*와 공유 원격 URL을 남긴다. 이것이 없으면 **다음 세션이 부트스트랩 여부를 판정하지 못해 매번 사용자에게 되묻는다**(리포 루트 `CLAUDE.md` §0-2 판정 입력)
 6. **자격증명 부트스트랩** — `.env.example`(필요 키 매니페스트, 값 없음) 생성·갱신 + `.env` 자리 마련 + `.gitignore`에 `.env` 추적 제외 보장. 시크릿 *값은 사용자가 채움* (SETTER는 값을 적지 않음)
-6.5. **(조건부) 이슈 트래커 config 포착** — 시스템이 트래커를 운영하면(S5.7) 인스턴스 트래커 config 파일(예: `{메타 레포}/ISSUE-TRACKER.md`)에 **`tracker.type`(jira/gitlab/github) + type별 좌표**(§2.2: jira=베이스 URL·프로젝트 키·email·statusNames / gitlab=host·projectIdOrPath·statusLabels·defaultAssignee / github=owner·repo·statusLabels·defaultAssignee[·milestone])·리포터/사용자·트리아지 담당자·**토큰 저장 위치(경로·변수명만 — 값 금지)** 를 기록 (POLICY-ISSUE-TRACKING). **(Jira 한정)** 필드/이슈타입/전이/보드/스프린트/에픽 맵 등 발견 메타는 런타임에 `ISSUE-TRACKER-AGENT`가 채우는 캐시 자리로 둔다(gitlab·github은 고정 스키마라 불요). 트래커 미운영이면 스킵 (조건부)
+6.5. **(조건부) 이슈 트래커 config 포착·생성** — 시스템이 트래커를 운영하면(S5.7) `{공유리포}/templates/ISSUE-TRACKER.template.md`에서 인스턴스 트래커 config 파일 `{메타 레포}/ISSUE-TRACKER.md`를 생성해(S7.5 — POLICY-TEMPLATE-ADHERENCE, 손수 자유 작성 금지) 거기에 **`tracker.type`(jira/gitlab/github) + type별 좌표**(§2.2: jira=베이스 URL·프로젝트 키·email·statusNames / gitlab=host·projectIdOrPath·statusLabels·defaultAssignee / github=owner·repo·statusLabels·defaultAssignee[·milestone])·리포터/사용자·트리아지 담당자·**토큰 저장 위치(경로·변수명만 — 값 금지)** 를 기록 (POLICY-ISSUE-TRACKING). **(Jira 한정)** 필드/이슈타입/전이/보드/스프린트/에픽 맵 등 발견 메타는 런타임에 `ISSUE-TRACKER-AGENT`가 채우는 캐시 자리로 둔다(gitlab·github은 고정 스키마라 불요). 트래커 미운영이면 스킵 (조건부)
 6.7. **오케스트레이터 세션 자가점검 훅 설치** (S8.7 — 신규·합류·보수 **모두 수행**) — `{공유리포}/.claude/`에 주입문 파일 + `UserPromptSubmit` 훅을 생성해, 오케스트레이터 정체성이 *매 프롬프트마다 기계적으로 재주입*되게 한다 (컨텍스트 압축 후 표류 방어). 산출물은 개인(PERSONAL) — 공유하지 않는다. 계약·본문의 단일 원천은 `templates/SELF-CHECK.template.md`
 6.8. **(조건부) 하네스 온보딩 위임 준비** (S5.9 인터뷰 + S9.5-a) — 프레임워크를 *바깥에서 구동*하는 선택적 외부 시스템(하네스)을 쓸 것인지 인터뷰에서 수집하고(S5.9), **팀 최초 설치자면** 검증 이후·종료 이전에 **그 하네스 레포를 직접 클론**하고 카탈로그가 알려주는 **온보딩 룰북의 실재를 확인**해, 오케스트레이터가 서브로 띄울 **디스패치 패키지**를 보고에 실어 반환한다(S9.5-a). 사용자에게 클론·CLI·문서 추적을 시키지 않는다. 목록·포인터는 `specs/HARNESS-CATALOG.md`, **온보딩 절차 자체는 각 하네스 레포의 룰북이 소유** — SETTER는 절차를 복제하지도, 서브를 직접 호출하지도 않는다(원칙 7 — 디스패치는 오케스트레이터, S9.5-b). 하네스 미사용이면 스킵 (조건부)
 
@@ -148,7 +155,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 ## 5. 실행 절차
 
 ```
-[페이즈 0] 모드 판정             →  S0        (보수 모드면 S8.7로 직행)
+[페이즈 0] 모드 판정             →  S0        (보수 모드면 S6.5·S8.7로 직행)
 [페이즈 1] 입력 수집 & 인터뷰   →  S1 ~ S5
 [페이즈 2] 자동 생성/합류        →  S6 ~ S8.7
 [페이즈 3] 검증 & 보고           →  S9 ~ S9.5  (S9.5 = 조건부 하네스 안내, 최초 설치자만)
@@ -165,16 +172,17 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 
 | 모드 | 수행 | 스킵 |
 |---|---|---|
-| **신규** | S1 ~ S9.5 전체 (인터뷰 S3~S5.9 포함 — S5.5·S5.7·S5.8·S5.9는 각각 조건부) | — |
-| **합류** | S1·S2·S6(clone)·S8.5·**S8.7**·S9 | S3~S5.9(인터뷰 **전부** — S5.5·S5.7·S5.8·S5.9 포함)·S7·S8·S8.6 (인스턴스 재생성 금지)·**S9.5**(합류자는 하네스 no-op — 아래) |
-| **보수** | **S8.7 + S9(해당 항목만)** | S1 ~ S9.5 **전부** |
+| **신규** | S1 ~ S9.5 전체 (인터뷰 S3~S5.9 포함 — S5.5·S5.7·S5.8·S5.9는 각각 조건부. S7.5는 S5.7 조건부) | — |
+| **합류** | S1·S2·S6(clone)·**S6.5**·S8.5·**S8.7**·S9 | S3~S5.9(인터뷰 **전부** — S5.5·S5.7·S5.8·S5.9 포함)·S7·**S7.5**·S8·S8.6 (인스턴스 재생성 금지)·**S9.5**(합류자는 하네스 no-op — 아래) |
+| **보수** | **S6.5 + S8.7 + S9(해당 항목만)** | S1 ~ S9.5 **전부** |
 
 **보수 모드 보호 규칙**:
 
-- 인스턴스(`ORCHESTRATOR.md`·`REPO-MAP.md`·`cycles/`)를 **절대 재생성·덮어쓰지 않는다.** 합류 분기와 동일한 보호 — 이미 팀이 채운 단일 원천을 훼손하면 복구 비용이 크다.
+- 인스턴스(`ORCHESTRATOR.md`·`REPO-MAP.md`·`ISSUE-TRACKER.md`·`cycles/`)를 **절대 재생성·덮어쓰지 않는다.** 합류 분기와 동일한 보호 — 이미 팀이 채운 단일 원천을 훼손하면 복구 비용이 크다.
 - 인터뷰를 다시 하지 않는다 (Q2.x~Q5.x는 이미 인스턴스에 있다).
 - **멱등**이어야 한다 — 같은 계약 버전에서 두 번 돌려도 결과가 같다. 훅 항목이 중복 누적되면 결함.
 - 보수 대상이 아닌 것(예: 트래커 config·하네스 기록·`.env`)은 건드리지 않는다.
+- **S6.5(위치 마커)는 보수 대상이다** — 개인·머신 로컬·재생성 가능이라는 점에서 자가점검 훅과 같은 부류이고, 사라지면 매 세션 되묻기가 재발한다. 보수 모드는 메타 레포를 *만들지 않으므로*, 기록할 경로를 **오케스트레이터가 호출 컨텍스트로 전달**한다(마커에서 읽었거나 사용자가 답한 값). 경로를 못 받으면 이 단계를 조용히 건너뛴다(추측 금지).
 
 > 모드가 불분명하면 *추측하지 말고* 오케스트레이터에 되묻는다 (EX-4 응답 모호).
 
@@ -269,7 +277,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 | Q5.7.7 | 인증은 `tracker.type` 이 결정(§1.2: jira Basic email+token / gitlab `PRIVATE-TOKEN` / github Bearer) — **토큰 저장 위치**(`.env` 변수명 또는 토큰 파일 *경로* — **값 아님**)만 포착 | 시크릿 경계 |
 
 > *시크릿 경계 (§3 자격증명 경계 / POLICY-TRACKING)*: 토큰 *값* 은 절대 인터뷰·기록하지 않는다. **경로·변수명만** config에 적고, 값은 머신별 시크릿 스토어(`.env` / 토큰 파일)에 사용자가 채운다. S8.5 `.env.example`에 트래커 토큰 키(값 없음)를 추가한다.
-> *기록 위치*: 응답은 **인스턴스 트래커 config 파일**(예: `{메타 레포}/ISSUE-TRACKER.md` — 인스턴스 스코프, 공유)에 `tracker.type` + type별 좌표로 기록한다. 상태 의미론은 플랫폼별로 다르게 온다 — jira는 상태명(로컬라이즈됨), gitlab·github은 상태 라벨명. (Jira 한정) 발견 메타(필드/이슈타입/전이/보드/스프린트/에픽 맵)는 런타임 캐시 자리로 둔다(ISSUE-TRACKER-AGENT가 채움). 트래커 미운영이면 파일을 만들지 않는다(조건부).
+> *기록 위치*: 응답은 **인스턴스 트래커 config 파일 `{메타 레포}/ISSUE-TRACKER.md`**(인스턴스 스코프, 공유)에 `tracker.type` + type별 좌표로 기록한다. 이 파일은 **`{공유리포}/templates/ISSUE-TRACKER.template.md`에서 S7.5가 생성**한다 — 형식을 손수 지어내지 않는다(POLICY-TEMPLATE-ADHERENCE). 변수 매핑은 S7.5 변수표·§7 부록 참조. 상태 의미론은 플랫폼별로 다르게 온다 — jira는 상태명(로컬라이즈됨), gitlab·github은 상태 라벨명. (Jira 한정) 발견 메타(필드/이슈타입/전이/보드/스프린트/에픽 맵)는 런타임 캐시 자리로 둔다(ISSUE-TRACKER-AGENT가 채움). 트래커 미운영이면 파일을 만들지 않는다(조건부).
 
 #### S5.8. 축적 지식 원천 인터뷰 (조회·갱신 대상) — **조건부**
 
@@ -323,7 +331,11 @@ cd {Q2.2}/{Q2.1}
 [ Q2.3 == yes ] && git init
 git remote add origin {Q2.4}       # 공유 원격 연결 (초기 push는 S8.5 후)
 mkdir cycles                       # 사이클 로그 저장소 자리
+# 빈 디렉토리는 깃이 추적하지 않는다 → 자리표 파일을 **반드시** 만든다 (아래 참조)
 ```
+
+> **`cycles/.gitkeep`은 옵션이 아니다.** `cycles/`는 *공유 인스턴스*(POLICY-TRACKING)인데 깃은 빈 디렉토리를 추적하지 않는다. 자리표를 만들지 않으면 S8.6의 스테이징이 조용히 no-op 되고, S9의 "공유 인스턴스 추적" 요구가 **이 항목만 소리 없이 빠진다** — 합류자는 `cycles/` 없는 레포를 받는다. 파일은 *빈 파일*이면 충분하다(내용 없음 = 인코딩 이슈 없음).
+> OS 중립 생성: POSIX 셸은 `: > cycles/.gitkeep`, PowerShell은 `New-Item -ItemType File cycles/.gitkeep`(이미 있으면 만들지 않는다 — `-Force`는 기존 파일을 자른다), 셸에 의존하고 싶지 않으면 **빈 파일 쓰기**로 직접 생성한다. 어느 쪽이든 결과는 같다.
 
 **합류** (Q2.4 원격에 인스턴스 이미 있음):
 ```bash
@@ -333,6 +345,33 @@ git clone {Q2.4} {Q2.2}/{Q2.1}     # 인스턴스(ORCHESTRATOR.md·REPO-MAP.md)�
 
 > 템플릿은 `{공유리포}/templates/`에 이미 존재(클론으로 받음). 메타 레포 안에 별도 templates 디렉토리 만들지 않는다.
 > 원격 dlc-meta 자체를 *생성*해야 하면(빈 프로젝트) — 사람이 GitLab 등에 빈 레포 선결 또는 에이전트가 사용자 컨펌 + `.env` 자격증명으로 생성 (REPO-CREATOR와 동일 모델, D-Stage4-2).
+
+#### S6.5. 메타 레포 위치 마커 기록 (신규·합류·보수 **모두 수행**)
+
+> *목적*: 메타 레포가 **어디에 있는지**를 남긴다. 이 값은 S2 인터뷰(`{Q2.2}/{Q2.1}`)에만 존재하고 인터뷰는 세션과 함께 사라지므로, 기록하지 않으면 **다음 세션이 부트스트랩 여부를 판정하지 못하고 매번 사용자에게 되묻는다**(실측된 결함 — 매 세션 반복). 리포 루트 `CLAUDE.md` §0-2의 판정은 이 마커를 입력으로 쓴다.
+> *왜 개인(PERSONAL) 파일인가*: **내용이 로컬 절대 경로**다. 같은 팀이라도 체크아웃 위치는 머신마다 다르므로(`/workspace/dlc-meta` · `C:\workspace\dlc-meta`) *구조적으로* 공유할 수 없다. 공유 인스턴스(`REPO-MAP.md`)가 절대 경로 대신 원격 URL을 쓰는 것과 같은 이유다(D-Stage4-3). 선례는 S8.7 — 훅 산출물도 같은 자리에 개인·gitignore로 둔다.
+> *왜 별도 템플릿 파일을 만들지 않는가*: 이것은 문서 인스턴스가 아니라 **키=값 4줄짜리 기계 판독 마커**이고, 아래 블록이 그 형식의 단일 원천이다(선례: S8.5 `.env.example`도 별도 템플릿 없이 본 룰북이 형식을 고정한다). 형식이 고정돼 있으므로 "손수 자유 작성"의 여지가 없다 (POLICY-TEMPLATE-ADHERENCE 취지 충족).
+
+**(1) 추적 제외 선결 확인** — `{공유리포}/.gitignore`가 `.claude/dlc-meta-location.txt`를 제외하는지 확인한다. 빠졌으면 *쓰기 전에* 채운다(개인 산출물이 공유 리포에 추적되면 팀원 머신 값이 서로 덮어쓰인다 — POLICY-TRACKING).
+
+**(2) 마커 작성** — 산출: `{공유리포}/.claude/dlc-meta-location.txt` (없으면 `.claude/` 디렉토리 생성)
+
+```text
+# ai-dlc-orchestrator — 메타 레포 위치 마커 (개인·머신 로컬, gitignore)
+# SETTER S6.5 생성. 절대 경로가 들어가므로 머신마다 다르다 — 공유·커밋 금지.
+META_REPO_PATH={Q2.2}/{Q2.1}
+META_REPO_REMOTE={Q2.4}
+WORKSPACE_ROOT={Q2.2}
+RECORDED_AT={ISO 날짜}
+```
+
+- **덮어쓰기(멱등)** — 이미 있으면 현재 값으로 교체한다. 항목을 누적하지 않는다(값이 둘이면 다음 독자가 어느 쪽이 유효한지 모른다).
+- **POLICY-ENCODING**: UTF-8(BOM 없음)·LF **직접 파일 쓰기**. 경로에 비ASCII가 섞일 수 있으므로 로케일 의존 셸 출력(`echo`·리다이렉트·`type`·기본 `Set-Content`)으로 흘려보내지 않는다. 값은 그대로 적는다 — 경로 구분자는 OS 원형을 유지한다(윈도우 `\`도 그대로).
+- **시크릿 금지** — 경로·URL만. 원격 URL에 토큰이 임베드돼 있으면(`https://user:token@…`) 토큰 부분을 제거하고 적는다 (자격증명 경계).
+
+**(3) 검증 (POLICY-VERIFY)** — 쓴 파일을 *다시 읽어* `META_REPO_PATH`가 실제 존재하는 디렉토리를 가리키는지, `{공유리포}`에서 `git status`가 이 파일로 더러워지지 않는지(gitignore 정상) 확인한다.
+
+**(4) 쓸 수 없으면 degraded — 중단하지 않는다** (EX-15와 같은 사상, **C FALLBACK**). 읽기전용·권한 없는 환경에서 마커를 못 만드는 것은 *오류가 아니다*. 잃는 것은 *다음 세션의 자동 판정*뿐이고, 그때는 `CLAUDE.md` §0-2의 폴백(사용자에게 물음)이 그대로 동작한다. 실패 사유를 보고에 싣고 진행한다 — **ABORT·PAUSE로 격상 금지.**
 
 #### S7. `ORCHESTRATOR.md` 작성
 
@@ -351,6 +390,28 @@ git clone {Q2.4} {Q2.2}/{Q2.1}     # 인스턴스(ORCHESTRATOR.md·REPO-MAP.md)�
 - 산출: `{메타 레포}/ORCHESTRATOR.md`
 - **쓰기 방식 (POLICY-ENCODING 필수)**: 변수 치환 결과를 **직접 UTF-8(BOM 없음)·LF 파일 쓰기**로 생성한다. 본문에 한국어 산문이 포함되므로 *로케일 의존 셸 출력(echo·리다이렉트·tee·기본 `Set-Content` 등)으로 흘려보내지 말 것* (Windows CP949 등에서 mojibake). 생성 후 U+FFFD·떠도는 `?`·BOM 검증 → 손상 시 재생성.
 - 본문에 `ORCHESTRATOR-AGENT.md` 참조 포함됨 (템플릿 기본)
+
+#### S7.5. `ISSUE-TRACKER.md` 작성 — **조건부** (S5.7에서 트래커 운영 시에만)
+
+> Q5.7.1이 "아니오"면 **파일을 만들지 않는다**(빈 파일로 자리를 남기지 않는다 — 조건부 인스턴스). 합류·보수 모드는 이 단계를 수행하지 않는다(인스턴스 재생성 금지 — 합류자는 clone으로 받는다).
+
+- 원본 템플릿: `{공유리포}/templates/ISSUE-TRACKER.template.md` (POLICY-TEMPLATE-ADHERENCE — 자유 형식 손수 작성 금지. **템플릿 없이 형식을 지어내면 사람마다 다른 모양이 나오고 `ISSUE-TRACKER-AGENT`가 좌표를 못 읽는다**)
+- **쓰기 방식 (POLICY-ENCODING 필수)**: S7과 동일 — 직접 UTF-8(BOM 없음)·LF 파일 쓰기, 로케일 의존 셸 출력 금지, 생성 후 검증·재생성.
+- 변수 채움:
+
+| 변수 | 출처 |
+|---|---|
+| `{SYSTEM_NAME}` | Q5.1 |
+| `{TRACKER_TYPE}` | Q5.7.2 (`jira` / `gitlab` / `github`) |
+| `{TRACKER_REPORTER}` | Q5.7.4 (범위 안 사이클 티켓 배정 대상 — 플랫폼별 식별자) |
+| `{TRACKER_TRIAGE}` | Q5.7.5 (범위 밖 요청 티켓 배정 대상) |
+| `{TRACKER_TOKEN_PATH}` | Q5.7.7 (`.env` 변수명 또는 토큰 파일 *경로* — **값 금지**) |
+| `{TRACKER_COORDINATES}` | Q5.7.3 (선택된 type의 좌표만 — ADAPTER §2.2) |
+| `{TRACKER_STATUS_SEMANTICS}` | Q5.7.6 (jira `statusNames` / gitlab·github `statusLabels`) |
+
+- **조건부 섹션 처리**: 템플릿 §2는 **선택된 `tracker.type` 블록 하나만** 렌더하고 나머지 둘은 통째로 뺀다. 템플릿 §4(런타임 발견 메타 캐시)는 **`jira`일 때만** 렌더하고 gitlab·github이면 섹션 전체(바로 위 구분선 포함)를 뺀다 — 그 플랫폼들은 스키마가 고정이라 발견 단계 자체가 없다(ADAPTER §6). §4를 렌더할 때 SETTER는 **빈 캐시 자리만** 두고 값을 인터뷰하지 않는다(`ISSUE-TRACKER-AGENT` I1이 런타임에 채운다). 그 외 섹션·변수는 그대로 보존한다 (미충전 `{...}` 잔존 금지).
+- **시크릿 금지 검증**: 생성 후 파일에 토큰 *값*으로 보이는 문자열이 없는지 확인한다 — 이 파일은 `dlc-meta`에 **커밋되는 공유 문서**다 (S9 자체 체크 항목).
+- 산출: `{메타 레포}/ISSUE-TRACKER.md` (공유 — S8.6에서 커밋·push)
 
 #### S8. `REPO-MAP.md` 작성
 
@@ -374,9 +435,23 @@ git clone {Q2.4} {Q2.2}/{Q2.1}     # 인스턴스(ORCHESTRATOR.md·REPO-MAP.md)�
 
 - 산출: `{메타 레포}/REPO-MAP.md`
 
-#### S8.5. 자격증명 부트스트랩 (`.env` / `.env.example` / `.gitignore`)
+#### S8.5. 자격증명 부트스트랩 + 인코딩 정규화 (`.env` / `.env.example` / `.gitignore` / `.gitattributes`)
 
-신규·합류 **둘 다 수행** (시크릿은 머신별이라 합류자도 자기 것 필요):
+신규·합류 **둘 다 수행** (시크릿은 머신별이라 합류자도 자기 것 필요. `.gitattributes`는 멱등 — 이미 있으면 손대지 않으므로 구버전에 만들어진 기존 메타 레포도 합류 시 보강된다):
+
+**(0) `.gitattributes` — LF 정규화 (POLICY-ENCODING의 *기계적* 강제)**
+
+`{메타 레포}/.gitattributes`가 없으면 아래 내용으로 생성한다. 공유리포에는 있는데 메타 레포에 없으면 **POLICY-ENCODING(LF)을 강제할 기계가 없어** 커밋마다 `LF will be replaced by CRLF` 경고가 나고, 머신마다 다른 줄바꿈이 섞인 인스턴스가 팀에 공유된다. 정책은 문서가 아니라 **파일이 강제해야 한다**.
+
+```text
+# dlc-meta — cross-platform line-ending normalization (POLICY-ENCODING).
+# 레포에는 LF로 저장하고 모든 OS에서 LF로 체크아웃한다.
+* text=auto eol=lf
+```
+
+> 내용이 ASCII뿐이므로 어떤 방식으로 써도 무방하지만, 다른 산출물과 같은 규율(직접 파일 쓰기)로 만드는 것이 안전하다. 이미 있으면 **덮어쓰지 않는다** — 팀이 추가한 규칙을 지워선 안 된다.
+
+**(1)~(3) 자격증명 부트스트랩**
 
 ```bash
 cd {메타 레포}
@@ -403,7 +478,7 @@ grep -qxF '.env' .gitignore 2>/dev/null || echo '.env' >> .gitignore
 
 #### S8.6. 공유 메타 레포 커밋·push (신규 — **필수·검증 단계, 생략 금지**)
 
-> **POLICY-TRACKING**: 시스템 인스턴스(ORCHESTRATOR.md·REPO-MAP.md·cycles/)는 *공유(SHARED)* 산출물이다. 깃 추적 + 커밋 + push를 **반드시 성사**시켜야 한다. 이 단계를 옵셔널로 취급하거나 건너뛰면 *전체 시스템 인스턴스·핸드오프가 추적 안 된 채 로컬에만 남아* 팀원이 한 원천을 공유하지 못한다 (실제 사고: 명세상 커밋 단계가 있었으나 실행되지 않아 인스턴스가 미추적·로컬 잔존). **신규 부트스트랩에서 무조건 수행**, 합류(clone)는 이미 추적된 상태이므로 해당 없음.
+> **POLICY-TRACKING**: 시스템 인스턴스(ORCHESTRATOR.md·REPO-MAP.md·*조건부* ISSUE-TRACKER.md·cycles/)는 *공유(SHARED)* 산출물이다. 깃 추적 + 커밋 + push를 **반드시 성사**시켜야 한다. 이 단계를 옵셔널로 취급하거나 건너뛰면 *전체 시스템 인스턴스·핸드오프가 추적 안 된 채 로컬에만 남아* 팀원이 한 원천을 공유하지 못한다 (실제 사고: 명세상 커밋 단계가 있었으나 실행되지 않아 인스턴스가 미추적·로컬 잔존). **신규 부트스트랩에서 무조건 수행**, 합류(clone)는 이미 추적된 상태이므로 해당 없음.
 
 ```bash
 cd {메타 레포}
@@ -411,8 +486,9 @@ cd {메타 레포}
 git fetch origin --prune
 
 # (2) 공유 인스턴스 + cycles/ 자리표 스테이징. `.env`(개인)는 gitignore라 제외됨(아래서 검증).
-git add ORCHESTRATOR.md REPO-MAP.md .gitignore .env.example
-git add cycles/.gitkeep 2>/dev/null || true   # 빈 디렉토리 추적용 자리표 (없으면 무시)
+git add ORCHESTRATOR.md REPO-MAP.md .gitignore .gitattributes .env.example
+git add cycles/.gitkeep            # S6에서 만든 자리표 — **없으면 실패다**(조용히 넘기지 않는다)
+git add ISSUE-TRACKER.md           # (조건부) S7.5 산출 — 트래커 미운영이면 파일이 없으므로 이 줄을 실행하지 않는다
 
 # (3) `.env`가 스테이징에 절대 없어야 함 (시크릿 누출 가드 — 있으면 멈춤)
 git diff --cached --name-only | grep -qx '.env' && { echo 'ABORT: .env staged — 시크릿 누출 위험'; exit 1; } || true
@@ -422,8 +498,11 @@ git commit -m "bootstrap: dlc-meta 시스템 인스턴스 (ORCHESTRATOR·REPO-MA
 git push -u origin HEAD
 ```
 
+> **`git add cycles/.gitkeep`을 `|| true`로 감싸지 않는다.** 감싸면 자리표가 없을 때 *조용히 no-op*가 되고, `cycles/`만 추적에서 소리 없이 빠진 채 커밋이 성공한 것처럼 보인다(실측된 결함). 자리표는 S6이 만들었어야 하므로, 없다면 그것이 **드러나야 할 실패**다 — S6으로 돌아가 만들고 다시 스테이징한다.
+
 **커밋 성사 검증 (필수 — 통과 못 하면 실패 보고)**:
 - `git log -1 --oneline`에 위 커밋이 보이는지
+- `git ls-files cycles/`가 **비어 있지 않은지** (`cycles/.gitkeep`이 실제로 추적됐는지 — 빈 디렉토리는 깃이 추적하지 않으므로 이 확인 없이는 성사를 알 수 없다)
 - `git status`가 *공유 인스턴스에 대해* clean (미추적·미커밋 잔존 없음) — `.env`만 untracked로 남는 것은 정상
 - push 결과: 원격에 커밋이 반영됐는지(`git rev-parse HEAD` == `git rev-parse @{u}`). push 출력에 `[new branch]`가 떴는데 *기존 브랜치 갱신* 의도였다면 멈추고 분기/MR 상태 점검 (SYSTEM-WORKFLOW §3 fetch 선행 가드).
 - 검증 실패 시 *성공으로 보고하지 말 것* — S9 자체 체크에서 "공유 인스턴스 추적·커밋" 항목 FAIL로 오케스트레이터에 보고.
@@ -513,23 +592,29 @@ git push -u origin HEAD
 - 의존 컬럼이 *존재하는 슬러그*만 가리킴
 - **`.env`가 `.gitignore`에 포함됐는지 (시크릿 누출 방지 — 미포함이면 실패)**
 - `.env.example`에 값이 비어 있는지 (실수로 시크릿 커밋 방지)
-- **`.gitignore`가 공유 인스턴스를 무시하지 않는지** (ORCHESTRATOR.md·REPO-MAP.md·cycles/ — 무시하면 실패. POLICY-TRACKING: 개인 파일만 무시)
+- **`.gitignore`가 공유 인스턴스를 무시하지 않는지** (ORCHESTRATOR.md·REPO-MAP.md·*조건부* ISSUE-TRACKER.md·cycles/ — 무시하면 실패. POLICY-TRACKING: 개인 파일만 무시)
 - **(신규) 공유 인스턴스 추적·커밋 성사** (S8.6) — 커밋이 `git log`에 보이고 `HEAD == @{u}`(push 반영), 공유 인스턴스에 미추적 잔존 없음. 미성사면 **실패** (인스턴스가 로컬 잔존 → 팀 공유 불가)
+- **(신규) `cycles/` 추적 성사** — `git ls-files cycles/`가 비어 있지 않은지(`.gitkeep` 추적됨). 비어 있으면 **실패** — `cycles/`는 공유 인스턴스인데 자리표 없이는 깃이 추적하지 않아 합류자가 못 받는다
+- **`.gitattributes` 존재** (S8.5) — 메타 레포에 LF 정규화 규칙이 있는지. 없으면 **실패**(POLICY-ENCODING을 강제할 기계가 없음)
+- **(조건부, S5.7) 트래커 config 인스턴스 정합** — 트래커를 운영하면: `{메타 레포}/ISSUE-TRACKER.md`가 **템플릿에서 생성**됐고(섹션 구조 보존·미충전 `{...}` 잔존 없음), 선택된 `tracker.type` 좌표만 렌더됐으며, **토큰 *값*이 들어 있지 않은지**(변수명·경로만 — 값이 있으면 **실패**, 시크릿 누출. 이 파일은 커밋되는 공유 문서다). 트래커 미운영이면: 그 파일이 **아예 없는지**(빈 파일로 자리를 남겼으면 실패)
+- **메타 레포 위치 마커** (S6.5) — `{공유리포}/.claude/dlc-meta-location.txt`가 존재하고 `META_REPO_PATH`가 실제 디렉토리를 가리키며, 그 파일이 `{공유리포}`에서 **추적되지 않는지**(gitignore 정상 — 추적되면 실패). 환경 제약으로 쓰지 못했으면 **`SKIPPED(degraded, 사유)`** 로 보고한다 (**FAIL 아님** — C FALLBACK. 다음 세션은 `CLAUDE.md` §0-2 폴백으로 사용자에게 묻는다)
 - **(조건부, S5.8) 축적 지식 원천 기록 정합** — 원천을 운영하면: `ORCHESTRATOR.md`에 「축적 지식 원천」 섹션이 있고 좌표·조회 수단이 채워졌으며, **토큰 *값*이 들어 있지 않은지**(변수명·경로만 — 값이 있으면 **실패**, 시크릿 누출). 원천이 없으면: 그 섹션이 **아예 없는지**(빈 자리·"(없음)"·미충전 `{KNOWLEDGE_SOURCES}` 잔존이면 실패). 쓰기 불가면 「접근 규율」 ②(작업 후 갱신)가 렌더되지 않았는지.
 - 생성 파일이 **UTF-8(BOM 없음)** 인지 — U+FFFD·떠도는 `?`·BOM 없음 (POLICY-ENCODING)
 - **세션 자가점검 훅 설치 성사** (S8.7) — 훅 명령을 *실제로 실행*한 stdout이 `[SELFCHECK {n}]`로 시작하고 무손상이며, `settings.local.json`이 유효 JSON + 기존 사용자 키 보존 + 개인 산출물이 추적되지 않음.
   - 미성사이되 **환경 제약으로 설치 불가**면(S8.7 (5) 절차 완료 — 마커 기록 또는 세션 1회 한도 적용) **`SKIPPED(degraded, 사유)`** 로 보고한다. **FAIL 아님** — EX-15는 C FALLBACK이고 부트스트랩은 성공이다.
   - 설치 가능한 환경인데 절차 미이행·검증 누락으로 미성사면 **FAIL** (POLICY-VERIFY — 클레임만 하고 실측을 안 한 경우가 여기다)
 
-> **보수 모드**에서는 위 항목 중 *세션 자가점검 훅* 항목만 검사·보고한다 (나머지는 손대지 않았으므로 판정 대상 아님).
+> **보수 모드**에서는 위 항목 중 *세션 자가점검 훅*·*메타 레포 위치 마커* 항목만 검사·보고한다 (나머지는 손대지 않았으므로 판정 대상 아님).
 
 **오케스트레이터에 보고할 4가지**:
 
 1. **생성 파일 절대 경로 목록** (+ 추적 상태)
    - `{메타 레포}/ORCHESTRATOR.md` (공유 — 커밋·push됨, S8.6)
    - `{메타 레포}/REPO-MAP.md` (공유 — 커밋·push됨, S8.6)
-   - `{메타 레포}/cycles/` (디렉토리, 공유)
-   - `{메타 레포}/.env.example`·`.gitignore` (공유) / `{메타 레포}/.env` (개인 — gitignore, 미추적)
+   - `{메타 레포}/ISSUE-TRACKER.md` (**조건부** — 트래커 운영 시. 공유 — 커밋·push됨, S7.5)
+   - `{메타 레포}/cycles/` + `cycles/.gitkeep` (공유 — 자리표가 추적돼야 디렉토리가 공유된다)
+   - `{메타 레포}/.env.example`·`.gitignore`·`.gitattributes` (공유) / `{메타 레포}/.env` (개인 — gitignore, 미추적)
+   - `{공유리포}/.claude/dlc-meta-location.txt` (**개인** — gitignore, 미추적. S6.5) + 기록한 `META_REPO_PATH`
    - `{공유리포}/.claude/orchestrator-selfcheck.txt`·`settings.local.json` (**개인** — gitignore, 미추적. S8.7) + 채택한 훅 명령과 **실행 검증 결과 원문**
 2. **정합성 체크 결과** — 항목별 통과/실패 + 실패 사유
 3. **인터뷰 응답 원본** — Q2.x ~ Q5.x 사용자 답변
@@ -608,6 +693,19 @@ fi
    - 온보딩이 *이 세션 밖*(다른 클론·다른 사람·나중)에서 끝나면 **같은 자리에 기록하도록** 좌표(파일 경로·섹션명)를 명시해 전달한다.
 4. **사용자 보고** — 붙인 하네스·대시보드 URL·남은 수동 작업(있으면)을 한 줄로 전달한다.
 
+**서브가 명령을 실행하지 못할 때 — 오케스트레이터 대리 실행 (조율 그 자체)**
+
+서브 에이전트가 **환경 제약**(런타임 권한·도구 접근 제한 등)으로 *룰북이 지정한 명령*을 실행하지 못하고 상위에 보고하는 일이 실제로 일어난다. 이때의 규약:
+
+| 규칙 | 내용 |
+|---|---|
+| **대리 실행한다** | 오케스트레이터가 그 명령을 **대신 실행하고 결과(stdout·종료코드·오류 원문)를 서브에 돌려준다.** 서브는 이어서 진행한다. 이는 원칙 7 위반이 아니라 **조율 그 자체**다 — 서브 호출·조율은 오케스트레이터 단독 책임이고, 서브가 못 하는 구간을 메우는 것이 그 책임의 내용이다 |
+| **묻지 말고 알리고 진행한다** | 매번 사용자 컨펌을 받으면 "단일 세션으로 완료"가 깨진다. 실행할 명령은 **이미 룰북이 지정한 것**이라 새 위험이 아니다 (누가 실행하느냐만 다르다) |
+| **무엇을·왜 대리했는지 반드시 보고한다** | 명령·사유(어떤 제약으로 서브가 못 했는지)를 사용자 보고에 싣는다. 사용자가 **권한 설정을 고쳐 다음엔 정상 위임되게** 할 수 있어야 한다 — 보고하지 않으면 제약이 영구히 숨는다 |
+| **예외 — 비가역이면 묻는다** | 대리 실행할 동작이 **비가역**(force-push·삭제·되돌릴 수 없는 외부 쓰기 등)이면 그때는 사용자에게 컨펌을 받는다 (DECISIONS A-4와 같은 사상) |
+
+> 이 규약은 하네스 온보딩에 한정되지 않는다 — **모든 서브**에 같게 적용한다. 여기 적는 이유는 리허설에서 처음 드러난 자리가 여기이고, 서브가 문서 근거 없이 판단해야 했기 때문이다. 코어 룰북 참조: `agents/orchestrator/ORCHESTRATOR-AGENT.md` §2.3 원칙 7.
+
 **실패 격리 (C FALLBACK — 중단 금지)** — 어느 단계에서 깨지든 **부트스트랩을 실패로 만들지 않는다.** 이미 S9까지 성사됐다. **ABORT·PAUSE로 격상 금지**, 사용자 컨펌을 기다리며 멈추지도 않는다(사람 없는 자동 기동 세션이 정상 케이스). 다만 **무엇이·왜 실패했고·사람이 무엇을 하면 되는지**는 반드시 전달한다:
 
 | 실패 지점 | 사용자에게 전달할 것 |
@@ -641,13 +739,16 @@ fi
 |---|---|
 | `{메타 레포}/ORCHESTRATOR.md` (**시스템 스코프**) | `{공유리포}/templates/ORCHESTRATOR.template.md` |
 | `{메타 레포}/REPO-MAP.md` (**시스템 스코프**) | `{공유리포}/templates/REPO-MAP.template.md` |
+| `{메타 레포}/ISSUE-TRACKER.md` (**시스템 스코프**, *조건부*) | `{공유리포}/templates/ISSUE-TRACKER.template.md` |
 | `{공유리포}/.claude/orchestrator-selfcheck.txt` (**머신 로컬·개인**) | `{공유리포}/templates/SELF-CHECK.template.md` |
 
 템플릿 본문 변경은 *깃 PR/머지*로만 (원칙 8). SETTER는 *항상 현재 main의 템플릿*을 읽어 인스턴스를 채운다 (POLICY-TEMPLATE-ADHERENCE).
 
-앞의 두 개는 **인터뷰로 채우는 공유 인스턴스**이고, 세 번째는 **인터뷰 없이 생성되는 머신 로컬 개인 산출물**이다 (계약 버전과 본문이 템플릿에 이미 고정돼 있어 물을 것이 없다). 그래서 아래 「스코프 경계」의 "인터뷰→템플릿 생성 = 두 개뿐"과 모순되지 않는다.
+앞의 세 개는 **인터뷰로 채우는 공유 인스턴스**(셋째는 조건부)이고, 마지막은 **인터뷰 없이 생성되는 머신 로컬 개인 산출물**이다 (계약 버전과 본문이 템플릿에 이미 고정돼 있어 물을 것이 없다).
 
-> **스코프 경계 (다른 템플릿은 SETTER가 생성하지 않음)**: `WORKFLOW`·`DESIGN`은 시스템 레벨에서 *PR/머지로 관리되는 명세*(`specs/SYSTEM-WORKFLOW.md` 및 그 동반 시스템 가이드)로 재포지셔닝됨 — *부트스트랩 인터뷰로 매번 생성되는 인스턴스가 아니다*(자동 생성 대상 아님). `CLAUDE`·`STACK`·`CODING`·`FRAMEWORK`·`CHECKLIST`는 **레포 스코프**로, REPO-SETTER(RP5.5 동반 템플릿 + RP6 AWS Extension)가 레포마다 생성한다. 따라서 SETTER가 인터뷰→템플릿으로 *생성*하는 시스템 인스턴스는 위 두 개(ORCHESTRATOR·REPO-MAP)뿐이며, 시스템 전역 컨벤션(S5.5)·축적 지식 원천(S5.8)·부착된 하네스(S5.9·S9.5)는 새 인스턴스 파일을 만들지 않고 *ORCHESTRATOR 인스턴스의 `{SYSTEM_CONVENTIONS}`·`{KNOWLEDGE_SOURCES}`·`{HARNESSES}` 섹션*에 기록한다(중복·스코프 충돌 방지).
+> **템플릿 파일이 없는 생성물 두 개** — `{메타 레포}/.env.example`(S8.5)·`{공유리포}/.claude/dlc-meta-location.txt`(S6.5)는 문서 인스턴스가 아니라 **형식이 고정된 키=값 파일**이고, 본 룰북의 해당 절 펜스 블록이 그 형식의 단일 원천이다. 자유 작성의 여지가 없으므로 POLICY-TEMPLATE-ADHERENCE의 취지에 어긋나지 않는다.
+
+> **스코프 경계 (다른 템플릿은 SETTER가 생성하지 않음)**: `WORKFLOW`·`DESIGN`은 시스템 레벨에서 *PR/머지로 관리되는 명세*(`specs/SYSTEM-WORKFLOW.md` 및 그 동반 시스템 가이드)로 재포지셔닝됨 — *부트스트랩 인터뷰로 매번 생성되는 인스턴스가 아니다*(자동 생성 대상 아님). `CLAUDE`·`STACK`·`CODING`·`FRAMEWORK`·`CHECKLIST`는 **레포 스코프**로, REPO-SETTER(RP5.5 동반 템플릿 + RP6 AWS Extension)가 레포마다 생성한다. 따라서 SETTER가 인터뷰→템플릿으로 *생성*하는 시스템 인스턴스는 **ORCHESTRATOR·REPO-MAP + (조건부) ISSUE-TRACKER 셋뿐**이며, 시스템 전역 컨벤션(S5.5)·축적 지식 원천(S5.8)·부착된 하네스(S5.9·S9.5)는 새 인스턴스 파일을 만들지 않고 *ORCHESTRATOR 인스턴스의 `{SYSTEM_CONVENTIONS}`·`{KNOWLEDGE_SOURCES}`·`{HARNESSES}` 섹션*에 기록한다(중복·스코프 충돌 방지). **트래커 config만 별도 파일인 이유**: 오케스트레이터가 읽는 *운영 컨텍스트*가 아니라 `ISSUE-TRACKER-AGENT`가 읽고 (Jira 한정) **런타임에 되쓰는** 기계 config이고, 그 잦은 쓰기가 ORCHESTRATOR 인스턴스를 흔들면 안 되기 때문이다 (원칙 1 — 호출 시점·책임이 다르면 분리).
 
 ---
 
@@ -663,3 +764,12 @@ fi
 | `REPO-MAP.md` | `{SYSTEM_NAME}` | Q5.1 |
 | `REPO-MAP.md` | `{REPO_TABLE}` (슬러그·**원격**·역할·도메인·의존) | Q4.1~Q4.5 집계 |
 | `REPO-MAP.md` | `{REPO_PROFILES}` | 부트스트랩 시 `_(해당 프로파일 없음)_` 빈 collapse (미충전 금지) — per-repo는 REPO-SETTER RP7.6 |
+| `ISSUE-TRACKER.md` **(조건부 — 트래커 미운영 시 파일 자체 미생성)** | `{SYSTEM_NAME}` | Q5.1 |
+| `ISSUE-TRACKER.md` | `{TRACKER_TYPE}` | Q5.7.2 (`jira`/`gitlab`/`github` — 이후 좌표·인증·상태 원천을 가르는 값) |
+| `ISSUE-TRACKER.md` | `{TRACKER_REPORTER}` | Q5.7.4 (범위 안 사이클 티켓 배정 대상) |
+| `ISSUE-TRACKER.md` | `{TRACKER_TRIAGE}` | Q5.7.5 (범위 밖 요청 티켓 배정 대상 + gitlab·github `defaultAssignee`) |
+| `ISSUE-TRACKER.md` | `{TRACKER_TOKEN_PATH}` | Q5.7.7 (`.env` 변수명 또는 토큰 파일 **경로** — 값 금지) |
+| `ISSUE-TRACKER.md` | `{TRACKER_COORDINATES}` (선택된 type 블록 **하나만** 렌더) | Q5.7.3 (ADAPTER §2.2 type별 필수 좌표) |
+| `ISSUE-TRACKER.md` | `{TRACKER_STATUS_SEMANTICS}` | Q5.7.6 (jira `statusNames` / gitlab·github `statusLabels`) |
+| `ISSUE-TRACKER.md` | *런타임 발견 메타 캐시* (Jira 한정 섹션) | **SETTER가 채우지 않음** — 빈 캐시 자리만. `ISSUE-TRACKER-AGENT` I1이 런타임 발견값으로 채운다 (gitlab·github은 섹션 자체 미렌더) |
+| `{공유리포}/.claude/dlc-meta-location.txt` (개인) | `META_REPO_PATH`·`META_REPO_REMOTE`·`WORKSPACE_ROOT` | Q2.2·Q2.1·Q2.4 (S6.5 — 절대 경로이므로 공유 금지) |

@@ -64,7 +64,7 @@
 
 ## 2. 트래커 중립 config 계약 (SETTER가 포착)
 
-본 명세는 *어떤 트래커든* 다음 계약을 인스턴스 config에서 읽는다. 구체값은 *배포별* 이며 SETTER 인터뷰로 포착된다(§SETTER 참조). 공유 명세는 *계약의 형태* 만 규정한다. **계약은 공통 항목 + `tracker.type` 별 좌표(coordinates)** 로 나뉜다 — `tracker.type` 이 무엇이냐에 따라 어떤 좌표가 필요한지가 결정된다(§1.2).
+본 명세는 *어떤 트래커든* 다음 계약을 인스턴스 config에서 읽는다. 구체값은 *배포별* 이며 SETTER 인터뷰로 포착된다(§SETTER 참조). 공유 명세는 *계약의 형태* 만 규정한다. **인스턴스 파일의 *생김새*는 `templates/ISSUE-TRACKER.template.md` 가 단일 원천이다** — SETTER S7.5가 그 템플릿에서 `{메타 레포}/ISSUE-TRACKER.md` 를 생성한다(POLICY-TEMPLATE-ADHERENCE. 템플릿 없이 형식을 지어내면 사람마다 다른 모양이 나와 실행 주체가 좌표를 못 읽는다). **계약은 공통 항목 + `tracker.type` 별 좌표(coordinates)** 로 나뉜다 — `tracker.type` 이 무엇이냐에 따라 어떤 좌표가 필요한지가 결정된다(§1.2).
 
 ### 2.1 공통 항목 (모든 `tracker.type` 공통)
 
@@ -202,7 +202,8 @@ Jira에서는 티켓 생성 *전에* 프로젝트의 **필수 필드를 create-m
 | `agents/ISSUE-TRACKER-AGENT.md` (피어 에이전트, 별도) | 본 명세(룰)의 *실행 주체* — 티켓 생성·전이·코멘트·부모/스프린트 배선 수행 |
 | `specs/CYCLE-LOG.md` §4~5 | 사이클 START 바인딩·audit.md 동기화(§5·§7)의 형식 원천 |
 | `agents/CYCLE-CLOSER.md` CC6 | 사이클 종료 시 Done 전이 실행처(외부 액션) — 본 §3.2 CLOSE |
-| `agents/SETTER.md` | 트래커 config 계약(§2)의 포착 주체(부트스트랩 인터뷰) |
+| `agents/SETTER.md` S5.7·S7.5 | 트래커 config 계약(§2)의 포착 주체(부트스트랩 인터뷰) + 인스턴스 생성 주체 |
+| `templates/ISSUE-TRACKER.template.md` | 인스턴스 `dlc-meta/ISSUE-TRACKER.md` 의 **형식 단일 원천** (§2 계약의 렌더 형태) |
 | `agents/orchestrator/ORCHESTRATOR-AGENT.md` 책임 7 | 사이클↔티켓 바인딩 인식·조율 — 본 §5 |
 | `agents/orchestrator/DECISIONS.md` A-4 | 외부·비가역 행위 승인 — 티켓 생성·전이가 외부 쓰기이면 정합(대개 자율, 고영향 시 게이트) |
 | `agents/orchestrator/DECISIONS.md` A-5 | 생산자→소비자 채택 순서 — 범위 밖 요청 티켓(A)이 생산자 작업일 때 순서 정합 |
@@ -221,7 +222,7 @@ Jira에서는 티켓 생성 *전에* 프로젝트의 **필수 필드를 create-m
 
 가정한 cross-ref (오케스트레이터가 정합 검토 권장):
 - **`agents/ISSUE-TRACKER-AGENT.md`** — 본 명세의 실행 주체인 피어 에이전트가 `tracker.type` 으로 분기해 §1.2 매핑을 실행.
-- **인스턴스 트래커 config 파일**(예: `dlc-meta/ISSUE-TRACKER.md`) — 구체 트래커값(`tracker.type` + type별 좌표·상태명/상태 라벨·에픽 맵·토큰 경로)의 인스턴스 단일 원천. SETTER가 포착, ISSUE-TRACKER-AGENT가 (Jira 한정) 런타임 발견 메타를 캐시.
+- **인스턴스 트래커 config 파일 `dlc-meta/ISSUE-TRACKER.md`** — 구체 트래커값(`tracker.type` + type별 좌표·상태명/상태 라벨·에픽 맵·토큰 경로)의 인스턴스 단일 원천. SETTER S7.5가 `templates/ISSUE-TRACKER.template.md` 에서 생성·포착하고, ISSUE-TRACKER-AGENT가 (Jira 한정) 런타임 발견 메타를 캐시.
 - 플랫폼·기술 명칭(Jira createmeta·GitLab `PRIVATE-TOKEN`·GitHub Bearer·에픽/iteration/milestone 등)은 §1.2에 명시된 검증 매핑이되, 어느 플랫폼도 요구사항이 아니다(인스턴스 선택).
 
 향후 변경은 깃 PR/머지 (원칙 8).
