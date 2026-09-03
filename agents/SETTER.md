@@ -199,19 +199,25 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
   - 원격(`{Q2.4}`)에 인스턴스가 이미 있음 → **합류** (clone, 인스턴스 재생성 안 함). *에러 아님*
   - 없음 → **신규** (이 SETTER가 부트스트랩 + 원격 생성)
   - 로컬 위치 충돌(이미 다른 내용 존재)만 에러
+  - ⚠️ **판정 근거는 원격 실조회뿐이다.** 호출 컨텍스트에 "신규로 부트스트랩하라"·"합류다" 같은 **모드 라벨이 함께 왔더라도 그것을 판정 근거로 쓰지 않는다** — 호출자가 받은 것은 *사용자의 자기신고*이고, 그 신고가 틀리면 **합류자를 신규로 몰아 팀 인스턴스를 덮어쓴다**(비가역·실측된 위험). 라벨과 실조회가 어긋나면 **실조회가 이긴다**. 진입점도 같은 규율을 반대편에서 지킨다(`CLAUDE.md` §0-2 폴백 — 호출자는 라벨을 붙이지 않는다).
+  - **신규/합류 어느 쪽인지는 이 단계에서 확정되며, 그 결과가 §5 모드표(수행/스킵)와 S2 인터뷰 범위를 결정한다.**
 - 필요 권한 체크 (디렉토리 생성, git 초기화, 원격 push/clone — 자격증명은 S8.5 `.env`)
 - 실패 시 오케스트레이터에 보고 후 종료
 
 #### S2. 메타 레포 위치/이름 인터뷰
 
-| ID | 질문 | 기본/추천 |
-|---|---|---|
-| Q2.1 | 메타 레포 이름? | `dlc-meta` |
-| Q2.2 | 메타 레포 로컬 절대 경로? | (없음) |
-| Q2.3 | `git init` 진행할까? (신규 시) | yes |
-| Q2.4 | **dlc-meta 공유 원격 URL?** (GitLab 등) | (없음) — *이미 있으면 합류(clone), 없으면 신규 생성·push* |
+**묻는 순서가 고정이다 — Q2.4를 먼저 확정한다.** Q2.4가 신규/합류를 가르고(S1 판정), *합류면 Q2.1·Q2.3이 물을 것이 없어지기 때문*이다. 오케스트레이터가 진입점 폴백에서 이미 원격 URL·로컬 경로를 받아 넘겼으면(`CLAUDE.md` §0-2 폴백 (b)) 그 값을 Q2.4·Q2.2 응답으로 삼고 다시 묻지 않는다.
 
-> Q2.4가 신규/합류를 가른다 (S1 판정). 합류면 S3~S8(인터뷰·인스턴스 생성) 스킵하고 clone — 인스턴스는 팀원이 이미 채움.
+| ID | 질문 | 기본/추천 | 합류일 때 |
+|---|---|---|---|
+| Q2.4 | **dlc-meta 공유 원격 URL?** (GitLab 등) | (없음) — *이미 있으면 합류(clone), 없으면 신규 생성·push* | **먼저 확정** — 이 값이 분기의 원천 |
+| Q2.1 | 메타 레포 이름? | `dlc-meta` | **묻지 않는다 — 원격 URL이 완전히 결정한다** (아래) |
+| Q2.2 | 메타 레포 로컬 절대 경로? | (없음) | 묻는다 (머신마다 다름) |
+| Q2.3 | `git init` 진행할까? (신규 시) | yes | **묻지 않는다** (clone이 레포를 만든다) |
+
+> **합류 시 Q2.1 유도 규칙 (묻지 않는다 — 추측도 하지 않는다)**: 메타 레포 이름은 **Q2.4 원격 URL의 basename에서 유도**한다 — 마지막 경로 세그먼트에서 `.git` 접미사를 제거한 값(예: `…/team/dlc-meta.git` → `dlc-meta`). 합류자에게 이름은 *선택지가 아니다*: 로컬 디렉토리명이 원격과 어긋나면 팀원 간 경로 규약(`{Q2.2}/{Q2.1}`)과 하네스 클론의 형제 위치 규약이 사람마다 갈라진다. **사용자가 명시적으로 다른 로컬 디렉토리명을 요구할 때만** 그 값을 쓴다.
+> 신규일 때만 Q2.1을 묻는다(아직 원격이 없어 유도할 원천이 없다).
+> 합류면 S3~S8(인터뷰·인스턴스 생성)을 스킵하고 clone — 인스턴스는 팀원이 이미 채움.
 
 #### S3. 대상 레포 식별 방식 인터뷰
 
@@ -499,6 +505,7 @@ RECORDED_AT={ISO 날짜}
 
 - **자동화가 접근하지 않는 통합의 키는 넣지 않는다.** 사람이 브라우저로만 쓰는 서비스는 `.env` 대상이 아니다.
 - 조건이 하나도 걸리지 않으면 매니페스트는 `WORKSPACE_ROOT` 한 줄이다 — **그것이 정상**이다(범용 전제).
+- **합류 모드는 인터뷰 응답이 없으므로 조건 2~4가 발동할 수 없다 — 유도 표에서 `1`만 적용된다.** 따라서 합류자가 보강하는 것은 `WORKSPACE_ROOT` 하나뿐이고, 원격에서 받은 나머지 키는 팀 산출물이므로 손대지 않는다(판정 기준은 S9 항목 5b 모드별 표).
 - **값은 어떤 키에도 적지 않는다** (자격증명 경계). 주석으로도 예시 토큰을 적지 않는다.
 
 **(2)~(4) 자격증명 부트스트랩**
@@ -695,7 +702,7 @@ python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslash
 | 3 | **슬러그 중복 없음** + **의존 컬럼이 존재하는 슬러그만** 가리킴 | 공용 스니펫 **[MAP]** | 출력의 `dup`와 `dangling`이 **둘 다 빈 리스트**. 하나라도 비지 않으면 **FAIL**. 출력 원문을 보고에 싣는다 |
 | 4 | **`.env`가 gitignore 됨** (시크릿 누출 방지) | `git -C {메타 레포} check-ignore -v .env` | 종료코드 0(무시됨). 1이면 **FAIL** |
 | 5 | **`.env.example`에 값이 비어 있음** | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');[print('FAIL',i+1,l) for i,l in enumerate(open('.env.example',encoding='utf-8').read().splitlines()) if l.strip() and not l.lstrip().startswith('#') and not l.rstrip().endswith('=')]"` | 출력 없음. 값이 붙은 줄이 하나라도 있으면 **FAIL** |
-| 5b | **`.env.example` 키가 유도 표대로임** (S8.5 (1) — 벤더 중립) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');print([l.split('=')[0] for l in open('.env.example',encoding='utf-8').read().splitlines() if l.strip() and not l.startswith('#')])"` | 출력된 키 집합이 S8.5 (1) 유도 표 1~4가 허용한 것과 **정확히 일치**. 인터뷰에 없던 통합의 키가 하나라도 있으면 **FAIL** (쓰지 않는 벤더 키 혼입 — 실측된 결함) |
+| 5b | **`.env.example` 키가 유도 표대로임** (S8.5 (1) — 벤더 중립) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');print([l.split('=')[0] for l in open('.env.example',encoding='utf-8').read().splitlines() if l.strip() and not l.startswith('#')])"` | **모드마다 기준이 다르다 — 아래 「항목 5b 모드별 합격 기준」을 따르고 즉흥으로 메우지 않는다.** |
 | 6 | **`.gitignore`가 공유 인스턴스를 무시하지 않음** | `git -C {메타 레포} check-ignore ORCHESTRATOR.md REPO-MAP.md cycles/.gitkeep` (+ 조건부 `ISSUE-TRACKER.md`) | 종료코드 1 **이고 출력 없음**(=아무것도 무시되지 않음). 하나라도 출력되면 **FAIL** |
 | 7 | **공유 인스턴스 추적·커밋 성사** (S8.6) | `git -C {메타 레포} log -1 --oneline` · `git -C {메타 레포} rev-parse HEAD @{u}` · `git -C {메타 레포} status --porcelain` | 커밋 보임 · 두 해시 동일(push 반영) · porcelain 출력이 `.env` 외 없음. 미성사 **FAIL** |
 | 8 | **`cycles/` 추적 성사** | `git -C {메타 레포} ls-files cycles/` | 출력이 비어 있지 않음(`.gitkeep` 추적됨). 비면 **FAIL** |
@@ -707,6 +714,14 @@ python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslash
 | 14 | **(조건부, S5.8) 축적 지식 원천 기록 정합** | 운영 시: `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');t=open('ORCHESTRATOR.md',encoding='utf-8').read();print('## 축적 지식 원천' in t, '작업 후 갱신' in t)"` + 공용 스니펫 **[SEC]** / 미운영 시: 같은 명령의 첫 값이 `False` | 운영: 첫 값 `True` · [SEC] 통과 · Q5.8.4가 "쓰기 불가"면 둘째 값이 `False` / 미운영: 첫 값 `False`(섹션 자체가 없음). 어긋나면 **FAIL** |
 | 15 | **메타 레포 위치 마커** (S6.5) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');d=dict(l.split('=',1) for l in open(r'{공유리포}/.claude/dlc-meta-location.txt',encoding='utf-8').read().splitlines() if '=' in l and not l.startswith('#'));import os;print(d['META_REPO_PATH'], os.path.isdir(d['META_REPO_PATH']))"` + `git -C {공유리포} check-ignore .claude/dlc-meta-location.txt` | 경로가 실제 디렉토리(`True`) · check-ignore 종료코드 0(무시됨 — 추적되면 **FAIL**). 환경 제약으로 쓰지 못했으면 **`SKIPPED(degraded, 사유)`** (**FAIL 아님** — C FALLBACK. 다음 세션은 `CLAUDE.md` §0-2 폴백) |
 | 16 | **세션 자가점검 훅 설치 성사** (S8.7) | 채택한 **훅 명령을 실제로 실행**한 stdout + `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import json;json.load(open(r'{공유리포}/.claude/settings.local.json',encoding='utf-8'));print('valid json')"` + `git -C {공유리포} check-ignore .claude/settings.local.json .claude/orchestrator-selfcheck.txt` | stdout 첫 줄이 `[SELFCHECK {n}]`이고 무손상(항목 12 [ENC]로 재확인) · `valid json` · 기존 사용자 키 보존 · 두 개인 산출물 모두 무시됨 |
+
+**항목 5b 모드별 합격 기준** (유도 표는 *인터뷰가 채우는데* 합류는 인터뷰를 통째로 스킵한다 — 그 간극을 여기서 닫는다):
+
+| 모드 | 판정 대상 | 합격 기준 |
+|---|---|---|
+| **신규** | `.env.example` 전체 키 집합 | S8.5 (1) 유도 표 1~4가 허용한 것과 **정확히 일치**. 인터뷰에 없던 통합의 키가 하나라도 있으면 **FAIL** (쓰지 않는 벤더 키 혼입 — 실측된 결함) |
+| **합류** | **SETTER가 이번에 덧붙인 키만** | 합류는 인터뷰 응답이 없으므로 유도 표에서 **1(`WORKSPACE_ROOT`)만** 적용된다 → **`WORKSPACE_ROOT`가 존재하면 통과.** 원격에서 받은 나머지 키는 *팀이 인터뷰로 정한 산출물*이므로 **판정 대상이 아니다**(SETTER가 만들지 않은 것을 판정하지 않는다 — 합류 모드의 인스턴스 불가침과 같은 사상). 출력된 전체 키 목록은 **참고로 보고에 싣되 FAIL 근거로 쓰지 않는다** |
+| **보수** | — | 판정하지 않음 (`.env.example`을 손대지 않는다) |
 
 - 항목 16 보충 — 미성사이되 **환경 제약으로 설치 불가**면(S8.7 (5) 절차 완료 — 마커 기록 또는 세션 1회 한도 적용) **`SKIPPED(degraded, 사유)`** 로 보고한다. **FAIL 아님** — EX-15는 C FALLBACK이고 부트스트랩은 성공이다.
 - 항목 16 보충 — 설치 가능한 환경인데 절차 미이행·검증 누락으로 미성사면 **FAIL** (POLICY-VERIFY — 클레임만 하고 실측을 안 한 경우가 여기다).
