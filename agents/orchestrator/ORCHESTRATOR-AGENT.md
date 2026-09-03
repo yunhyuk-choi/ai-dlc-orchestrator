@@ -265,12 +265,13 @@ EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4
 | `ai-dlc-orchestrator/specs/CICD-RELEASE-ADAPTER.md` | CI/CD·릴리스 통합 명세 (POLICY-RELEASE, 조건부, 에이전트 아님) | 릴리스 게이트·EX-13 규율 원천 |
 | `ai-dlc-orchestrator/specs/DEPLOY-ADAPTER.md` | 실행 환경 배포 규율 명세 (POLICY-DEPLOY, 조건부, 에이전트 아님) | DEPLOY-AGENT 실행 룰 원천 / STEP 9.5 착지 후 배포·A-4 |
 | `ai-dlc-orchestrator/specs/ISSUE-TRACKER-ADAPTER.md` | 사이클↔티켓 바인딩 규율 명세 (POLICY-ISSUE-TRACKING, 조건부, 에이전트 아님) | ISSUE-TRACKER-AGENT 실행 룰 원천 / 책임 7 사이클↔티켓 바인딩 |
+| `ai-dlc-orchestrator/specs/HARNESS-CATALOG.md` | 선택적 외부 **하네스**(프레임워크를 바깥에서 구동하는 별도 시스템) 카탈로그 — *목록만*, 온보딩 지식은 각 하네스 레포 소유 (조건부, 에이전트 아님) | SETTER S5.9(사용 여부 인터뷰)·S9.5(최초 설치자 안내) 원천. ⚠️ `templates/extensions/`(AWS 레포 룰 확장)와 **다른 개념** |
 | `ai-dlc-orchestrator/specs/EVOLUTION.md` | 룰북 진화·메타 프로세스 명세 (에이전트 아님) | DP-9 진화 분기 룰 원천 |
 | `ai-dlc-orchestrator/templates/HANDOFF.template.md` | 핸드오프 문서 단일 원천 | EX-9 포맷 원천 |
 | `ai-dlc-orchestrator/templates/ORCHESTRATOR.template.md` | 시스템 인스턴스 템플릿 | SETTER가 채워 `dlc-meta/ORCHESTRATOR.md` 생성 |
 | `ai-dlc-orchestrator/templates/REPO-MAP.template.md` | 시스템 단위 레포 인벤토리 | 영향 분석 입력 원천 |
 | `ai-dlc-orchestrator/templates/RETROSPECTIVE.template.md` | 사이클 회고 산출 단일 원천 | TERMINATION §4.4 회고 → EVOLUTION 입력 포맷 |
-| `dlc-meta/ORCHESTRATOR.md` | 시스템 인스턴스 | 운영 시 본 룰북 참조하는 인스턴스. **시스템 전역 컨벤션 + (조건부) 축적 지식 원천 좌표·접근 규율의 단일 원천** — 지식 원천 섹션이 있으면 *착수 전 조회*(§4.1 [1]~[2]) / *작업 후 갱신*(로컬 세션 한정, 헤드리스는 조회만) / 큐레이션 규칙을 그 섹션대로 따른다 (SETTER S5.8 기록) |
+| `dlc-meta/ORCHESTRATOR.md` | 시스템 인스턴스 | 운영 시 본 룰북 참조하는 인스턴스. **시스템 전역 컨벤션 + (조건부) 축적 지식 원천 좌표·접근 규율의 단일 원천** — 지식 원천 섹션이 있으면 *착수 전 조회*(§4.1 [1]~[2]) / *작업 후 갱신*(로컬 세션 한정, 헤드리스는 조회만) / 큐레이션 규칙을 그 섹션대로 따른다 (SETTER S5.8 기록). **(조건부) 부착된 하네스 대시보드 좌표**도 여기 기록된다 — 그 섹션의 유무가 *팀 최초 설치자냐 아니냐*의 판정 근거다 (SETTER S9.5 / `specs/HARNESS-CATALOG.md`) |
 | `dlc-meta/REPO-MAP.md` | 시스템 도메인↔레포 매핑 | 단일 원천 (원칙 6) |
 | `dlc-meta/cycles/{cycle-id}/audit.md` | 사이클 단위 결정 추적 | 결정·예외 기록 |
 | `dlc-meta/cycles/{cycle-id}/handoff-v{n}.md` | 핸드오프 산출 인스턴스 | EX-9 산출 위치 |
