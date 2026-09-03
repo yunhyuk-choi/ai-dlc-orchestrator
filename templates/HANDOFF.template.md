@@ -118,7 +118,10 @@ Claude는 응답으로:
 
 ---
 
+<!-- TEMPLATE-ONLY -->
 ## 부록. 템플릿 사용 가이드 (요약)
+
+> **저작 지시 블록** — 생성 시 이 `TEMPLATE-ONLY` 블록 전체를 마커째 삭제한다 (인스턴스에 남으면 결함. `specs/SYSTEM-WORKFLOW.md` §3.2).
 
 본 템플릿은 HANDOFF-WRITER가 자동 채움. 수동 작성도 가능 (Stage 2 본격 진행 전 dogfooding 시기).
 
@@ -127,3 +130,4 @@ Claude는 응답으로:
 - **블록 단위** (섹션 채움): `{PROJECT_IDENTITY}` / `{CORE_DECISIONS_RETAINED}` / `{LATEST_DECISION_HIGHLIGHT}` / `{PROGRESS_STATUS}` / `{NEXT_ACTION_GUIDE}` / `{QUEUE}` / `{DECISION_LOG_TABLE}` / `{NEW_SESSION_FIRST_MESSAGE}` / `{CLAUDE_RESPONSE_GUIDE}` / `{REQUIRED_ATTACHMENTS}`
 
 채움 데이터 소스 매핑·실행 절차는 `ai-dlc-orchestrator/agents/HANDOFF-WRITER.md` 본문에서 본격 명세.
+<!-- /TEMPLATE-ONLY -->

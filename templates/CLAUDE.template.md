@@ -7,7 +7,7 @@
 
 ## 프로젝트 개요
 
-- **프로젝트명**: {PROJECT_FULL_NAME} (`{PROJECT_NAME}`)
+- **프로젝트명**: {PROJECT_FULL_NAME} ({PROJECT_NAME})
 - **설명**: {PROJECT_DESCRIPTION}
 - **런타임**: {STACK_SUMMARY}
 

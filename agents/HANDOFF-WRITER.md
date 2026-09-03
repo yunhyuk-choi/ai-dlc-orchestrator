@@ -160,8 +160,8 @@ mkdir -p dlc-meta/cycles/{cycle-id}
 ### 6.0 템플릿 준수 (POLICY-TEMPLATE-ADHERENCE)
 
 - 산출물이 `templates/HANDOFF.template.md`에서 *생성*됐나 (손수 자유 작성 아님)
-- 템플릿의 모든 섹션(메타·§1~§9·부록)이 *하나도 누락 없이* 그대로 존재하나
-- 템플릿의 모든 변수 자리가 빠짐없이 처리됐나 (드롭된 섹션·변수 0개)
+- 템플릿의 모든 섹션(메타·§1~§9)이 *하나도 누락 없이* 그대로 존재하나 — 단 **`<!-- TEMPLATE-ONLY -->` 블록(부록 「템플릿 사용 가이드」)은 마커째 삭제돼 있어야 한다**. 그것은 저작 지시이지 핸드오프 내용이 아니다 (`specs/SYSTEM-WORKFLOW.md` §3.2)
+- 템플릿의 모든 변수 자리가 빠짐없이 처리됐나 (드롭된 섹션·변수 0개) — 판정은 §3.2 잔존 검사 규칙(미충전 `{UPPER_SNAKE}` 0건 · `TEMPLATE-ONLY` 문자열 0건)
 - 산출 경로가 정본 경로 `dlc-meta/cycles/{cycle-id}/handoff-v{n}.md`인가 (플랫·임의 경로 아님)
 - 파일 인코딩 UTF-8(BOM 없음)·LF인가, 손상문자(U+FFFD)·BOM 없나 (POLICY-ENCODING)
 

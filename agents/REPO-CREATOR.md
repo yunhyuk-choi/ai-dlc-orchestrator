@@ -161,7 +161,7 @@ mkdir -p {RC1.2}/{RC1.1}
 cd {RC1.2}/{RC1.1}
 [ RC1.3 == yes ] && git init
 
-# 2. 원격 생성 (네임스페이스 {RC1.4}) — .env GITLAB_TOKEN 사용. 빈 원격이면 연결만.
+# 2. 원격 생성 (네임스페이스 {RC1.4}) — .env의 해당 호스팅 토큰 변수 사용(이름은 `.env.example` 매니페스트가 원천 — SETTER S8.5 (1)). 빈 원격이면 연결만.
 #    (사용자 선결로 빈 원격 만들어둔 경우 생성 스킵하고 URL만 연결)
 git remote add origin {RC1.4}/{RC1.1}.git
 

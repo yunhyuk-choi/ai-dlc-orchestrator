@@ -130,7 +130,7 @@ ABORT의 간소화 모드 결정 기준:
 - **충실·신규 사이클** (예외 발생·sprawl·재오픈·새 인텐트 유형·룰북 갭 체감): *풀 회고* — `templates/RETROSPECTIVE.template.md` 전 슬롯 채움. 특히 *룰북 갭*과 *제안 변경*을 명시.
 
 **산출·라우팅**:
-- 산출 위치: `dlc-meta/cycles/{cycle-id}/retrospective.md` — `templates/RETROSPECTIVE.template.md` 변수 채움.
+- 산출 위치: `dlc-meta/cycles/{cycle-id}/retrospective.md` — `templates/RETROSPECTIVE.template.md` 변수 채움. **`<!-- TEMPLATE-ONLY -->` 블록(부록 「템플릿 사용 가이드」)은 마커째 삭제**하고 생성한다 — 저작 지시이지 회고 내용이 아니다. 생성 후 잔존 판정은 `specs/SYSTEM-WORKFLOW.md` §3.2.
 - audit.md에 종료 직전 `PROGRESS: RETROSPECTIVE captured` 1줄 append (append-live, CYCLE-LOG §5.1).
 - **EVOLUTION 라우팅**: 회고의 *제안 룰북 변경* 슬롯이 **DP-9 진화 휴리스틱의 1급 입력원**이 된다 (`specs/EVOLUTION.md` §2·§3.E). 로그 기반 ②①③④ 신호와 *나란히* 진화 제안을 형성. 적용 게이트·경계는 EVOLUTION 본문이 그대로 관할 (항상 컨펌, dlc-meta 인스턴스 한정).
 

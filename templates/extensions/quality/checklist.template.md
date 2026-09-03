@@ -4,6 +4,9 @@
 > 적용·검증·버전 정합은 REPO-SETTER RP6 + AWS-ADAPTER §4가 담당 (본 파일은 중복 명세 안 함 — 원칙 6).
 > 위치(공유 룰북): `ai-dlc-orchestrator/templates/extensions/quality/checklist.template.md`
 
+<!-- TEMPLATE-ONLY -->
+> **저작 지시 블록** — 생성 시 이 `TEMPLATE-ONLY` 블록 전체를 마커째 삭제한다 (인스턴스에 남으면 결함. `specs/SYSTEM-WORKFLOW.md` §3.2).
+
 | 메타 | 값 |
 |---|---|
 | 카테고리 / 이름 | quality / checklist |
@@ -14,6 +17,7 @@
 | 적용 AWS phase·stage | Construction / Code Generation (pre-check) |
 | 인스턴스 경로 | `{레포}/aidlc-rules/aws-aidlc-rule-details/extensions/quality/checklist.md` |
 | 원천 | Stage 1 `CHECKLIST.template.md` (D-Stage2-18) |
+<!-- /TEMPLATE-ONLY -->
 
 ---
 
