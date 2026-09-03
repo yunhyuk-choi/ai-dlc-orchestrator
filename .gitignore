@@ -8,6 +8,12 @@
 # it is regenerated locally, never shared (POLICY-TRACKING).
 .claude/orchestrator-selfcheck.txt
 
+# Meta repo location marker — written per machine by SETTER S6.5 so the next
+# session can tell whether the system is bootstrapped without re-asking the user.
+# Contains a LOCAL ABSOLUTE PATH, which differs on every machine: PERSONAL by
+# construction, never shared (POLICY-TRACKING).
+.claude/dlc-meta-location.txt
+
 # Marker written when the hook cannot be installed in this environment (EX-15).
 # Suppresses repair-loop retries. PERSONAL and machine-specific by definition.
 .claude/orchestrator-selfcheck.unavailable

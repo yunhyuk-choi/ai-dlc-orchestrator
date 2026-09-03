@@ -206,7 +206,7 @@
 본 룰북은 다음을 *가정* 한다 — 해당 문서·필드가 아직 신설 중이면 정합 검토가 필요하다:
 
 - **`specs/ISSUE-TRACKER-ADAPTER.md` (POLICY-ISSUE-TRACKING)** — 티켓팅 룰·규율 정의 명세. 본 에이전트의 실행 대상 룰셋.
-- **인스턴스 트래커 config 파일**(예: `dlc-meta/ISSUE-TRACKER.md`) — 구체 트래커값(`tracker.type` + type별 좌표·상태명(jira)/상태 라벨(gitlab·github)·에픽 맵·토큰 경로·리포터/트리아지 신원)의 인스턴스 단일 원천. SETTER가 포착, 본 에이전트가 (Jira 한정) 런타임 발견 메타를 캐시.
+- **인스턴스 트래커 config 파일 `dlc-meta/ISSUE-TRACKER.md`** — 구체 트래커값(`tracker.type` + type별 좌표·상태명(jira)/상태 라벨(gitlab·github)·에픽 맵·토큰 경로·리포터/트리아지 신원)의 인스턴스 단일 원천. SETTER S7.5가 `templates/ISSUE-TRACKER.template.md` 에서 생성·포착하고, 본 에이전트가 (Jira 한정) 런타임 발견 메타를 그 파일의 「런타임 발견 메타 캐시」 섹션에 캐시한다.
 - **CYCLE-CLOSER CC6** — 사이클 종료 외부 액션(티켓)이 placeholder에서 *본 에이전트 Done 전이 호출* 로 구체화되는 것을 가정. 정합 시 CC6와 본 transition(Done)을 연결한다.
 
 > 플랫폼·기술 명칭(Jira createmeta·GitLab `PRIVATE-TOKEN`·GitHub Bearer·에픽/iteration/milestone 등)은 §1.2(ADAPTER)에 명시된 검증 매핑이되, 어느 플랫폼도 요구사항이 아니다 — 인스턴스가 `tracker.type` 으로 선택. 향후 변경은 깃 PR/머지(원칙 8).

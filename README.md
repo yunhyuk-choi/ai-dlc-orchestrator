@@ -119,7 +119,7 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
   - [`HARNESS-CATALOG.md`](specs/HARNESS-CATALOG.md) — 선택적 **하네스** 목록 (프레임워크를 바깥에서 구동하는 외부 시스템 — 목록만, 조건부)
 
 - **[`templates/`](templates/) — 채워서 인스턴스를 찍어내는 원본**
-  - 시스템·핸드오프: `ORCHESTRATOR` · `REPO-MAP` · `HANDOFF` · `RETROSPECTIVE`
+  - 시스템·핸드오프: `ORCHESTRATOR` · `REPO-MAP` · `ISSUE-TRACKER`(조건부) · `HANDOFF` · `RETROSPECTIVE` · `SELF-CHECK`(개인 산출)
   - 레포 템플릿 7종: `CLAUDE` · `STACK` · `WORKFLOW` · `DESIGN` · `CHECKLIST` · `CODING` · `FRAMEWORK`
   - [`extensions/`](templates/extensions/) — 레포에 선택 적용하는 AWS Extension: `quality`(체크리스트) · `coding`(코딩 규칙) · `framework`(프레임워크 패턴)
 

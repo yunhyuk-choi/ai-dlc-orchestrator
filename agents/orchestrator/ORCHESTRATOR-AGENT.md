@@ -95,7 +95,7 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
 - **원칙 4**: AI 에이전트 자율 실행, 사용자는 의미 결정만
 - **원칙 5**: 사이클 로깅 의무
 - **원칙 6**: 단일 원천 — 도메인 정보는 REPO-MAP, 결정 추적은 audit.md
-- **원칙 7**: 모든 서브 에이전트 호출은 오케스트레이터 단독 책임
+- **원칙 7**: 모든 서브 에이전트 호출은 오케스트레이터 단독 책임 — *서브가 환경 제약으로 룰북이 지정한 명령을 실행하지 못하면 오케스트레이터가 **대리 실행**하고 결과를 서브에 돌려준다. 위반이 아니라 조율 그 자체다. 사용자에게 묻지 말고 **알리고 진행**하되 무엇을·왜 대리했는지 반드시 보고한다(권한을 고쳐 다음엔 정상 위임되게). 단 **비가역** 동작이면 컨펌을 받는다 — 규약 본문은 `agents/SETTER.md` S9.5-b.*
 - **원칙 8**: 공유 룰북·템플릿은 깃 단일 원천 — 변경은 PR/머지로만
 
 **AWS 테넷 정합성** (참고): AWS AI-DLC의 4 테넷 — *Methodology first / No duplication / Agnostic / Human in the loop* — 본 시스템 원칙과 완전 정합.
@@ -269,11 +269,14 @@ EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4
 | `ai-dlc-orchestrator/specs/HARNESS-CATALOG.md` | 선택적 외부 **하네스**(프레임워크를 바깥에서 구동하는 별도 시스템) 카탈로그 — *포인터만*(레포 URL·**온보딩 룰북 경로**), 온보딩 지식은 각 하네스 레포 소유 (조건부, 에이전트 아님) | SETTER S5.9(사용 여부 인터뷰)·S9.5(최초 설치자 **위임 실행** — 클론 + 룰북을 서브로) 원천. 책임 3 조건부 위탁 대상의 좌표가 여기 있다. ⚠️ `templates/extensions/`(AWS 레포 룰 확장)와 **다른 개념** |
 | `ai-dlc-orchestrator/specs/EVOLUTION.md` | 룰북 진화·메타 프로세스 명세 (에이전트 아님) | DP-9 진화 분기 룰 원천 |
 | `ai-dlc-orchestrator/templates/HANDOFF.template.md` | 핸드오프 문서 단일 원천 | EX-9 포맷 원천 |
+| `ai-dlc-orchestrator/templates/ISSUE-TRACKER.template.md` | 트래커 config 인스턴스 단일 원천 (조건부) | SETTER S7.5가 채워 `dlc-meta/ISSUE-TRACKER.md` 생성 |
 | `ai-dlc-orchestrator/templates/ORCHESTRATOR.template.md` | 시스템 인스턴스 템플릿 | SETTER가 채워 `dlc-meta/ORCHESTRATOR.md` 생성 |
 | `ai-dlc-orchestrator/templates/REPO-MAP.template.md` | 시스템 단위 레포 인벤토리 | 영향 분석 입력 원천 |
 | `ai-dlc-orchestrator/templates/RETROSPECTIVE.template.md` | 사이클 회고 산출 단일 원천 | TERMINATION §4.4 회고 → EVOLUTION 입력 포맷 |
 | `dlc-meta/ORCHESTRATOR.md` | 시스템 인스턴스 | 운영 시 본 룰북 참조하는 인스턴스. **시스템 전역 컨벤션 + (조건부) 축적 지식 원천 좌표·접근 규율의 단일 원천** — 지식 원천 섹션이 있으면 *착수 전 조회*(§4.1 [1]~[2]) / *작업 후 갱신*(로컬 세션 한정, 헤드리스는 조회만) / 큐레이션 규칙을 그 섹션대로 따른다 (SETTER S5.8 기록). **(조건부) 부착된 하네스 대시보드 좌표**도 여기 기록된다 — 그 섹션의 유무가 *팀 최초 설치자냐 아니냐*의 판정 근거다 (SETTER S9.5 / `specs/HARNESS-CATALOG.md`) |
 | `dlc-meta/REPO-MAP.md` | 시스템 도메인↔레포 매핑 | 단일 원천 (원칙 6) |
+| `dlc-meta/ISSUE-TRACKER.md` | 트래커 config 인스턴스 (조건부) | `tracker.type`+좌표의 단일 원천 — ISSUE-TRACKER-AGENT가 소비·(Jira) 캐시 |
+| `{공유리포}/.claude/dlc-meta-location.txt` | **개인**(gitignore) 메타 레포 위치 마커 — 절대 경로라 머신마다 다름 | 세션 시작 시 부트스트랩 판정 입력 (`CLAUDE.md` §0-2. SETTER S6.5 산출) |
 | `dlc-meta/cycles/{cycle-id}/audit.md` | 사이클 단위 결정 추적 | 결정·예외 기록 |
 | `dlc-meta/cycles/{cycle-id}/handoff-v{n}.md` | 핸드오프 산출 인스턴스 | EX-9 산출 위치 |
 | `{레포}/aidlc-rules/aws-aidlc-rules/core-workflow.md` | AWS AI-DLC 핵심 룰 | 책임 3 위탁 대상 룰 원천 |
