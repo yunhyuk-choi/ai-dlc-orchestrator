@@ -63,7 +63,7 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
 
 1. **요구사항 분석·쪼개기** — 사용자 인텐트 수신, 자연어 → 작업 구조 분해
 2. **플랜 수립 + 사용자 컨펌** — STEP 적용·스킵 계획, execution-plan.md 산출, 사용자 검토 게이트
-3. **모든 서브 에이전트 호출·조율** — 우리 서브 (SETTER / REPO-SETTER / REPO-CREATOR / HANDOFF-WRITER / CYCLE-LOG / CYCLE-CLOSER / **CICD-SETTER** / **DEPLOY-AGENT** / **ISSUE-TRACKER-AGENT**) **+ 각 레포의 AWS 에이전트 (작업 위탁)**. 직렬·병렬 판단, 컨텍스트 격리. (원칙 7). **CICD-SETTER**(레포별 CI/CD 부착·통합 — REPO-SETTER 셋업 시 또는 운영 중 재부착)·**DEPLOY-AGENT**(적응형 환경 배포 — 착지 후 배포 단계, non-prod 자율 / prod 사람게이트 A-4)·**ISSUE-TRACKER-AGENT**(적응형 이슈 트래커 연동 — 사이클↔티켓 바인딩·범위 밖 요청 티켓, 트래커 config 보유 시)도 *조건부* 서브이며 그 호출 판단·조율 역시 본 책임이다 (SYSTEM-WORKFLOW STEP 9.5 / POLICY-ISSUE-TRACKING).
+3. **모든 서브 에이전트 호출·조율** — 우리 서브 (SETTER / REPO-SETTER / REPO-CREATOR / HANDOFF-WRITER / CYCLE-LOG / CYCLE-CLOSER / **CICD-SETTER** / **DEPLOY-AGENT** / **ISSUE-TRACKER-AGENT**) **+ 각 레포의 AWS 에이전트 (작업 위탁)**. 직렬·병렬 판단, 컨텍스트 격리. (원칙 7). **CICD-SETTER**(레포별 CI/CD 부착·통합 — REPO-SETTER 셋업 시 또는 운영 중 재부착)·**DEPLOY-AGENT**(적응형 환경 배포 — 착지 후 배포 단계, non-prod 자율 / prod 사람게이트 A-4)·**ISSUE-TRACKER-AGENT**(적응형 이슈 트래커 연동 — 사이클↔티켓 바인딩·범위 밖 요청 티켓, 트래커 config 보유 시)도 *조건부* 서브이며 그 호출 판단·조율 역시 본 책임이다 (SYSTEM-WORKFLOW STEP 9.5 / POLICY-ISSUE-TRACKING). **+ (조건부) 외부 하네스 온보딩 룰북 (작업 위탁)** — 하네스를 붙일 때는 *그 하네스 레포가 소유한 온보딩 룰북*을 서브로 실어 띄우고(우리 룰북 아님 — AWS 에이전트 위탁과 같은 모양), 4-튜플로 회수한 대시보드 좌표를 지상검증 후 `dlc-meta/ORCHESTRATOR.md` 「부착된 하네스」에 기록·커밋·push한다 (SETTER **S9.5-a** 준비 → 본 책임의 **S9.5-b** 디스패치·회수·기록. `specs/HARNESS-CATALOG.md`).
 4. **분기 판단** — 시스템 라우팅 + 레포 워크플로우 분기 모두 *런타임 판단*. 레포 워크플로우 분기 = AWS `execution-plan.md` 검토·승인 형태.
 5. **결과 통합·검토** — 서브 산출물 컨펌, 정합성 검증, 통합. 각 레포의 `audit.md` / `aidlc-state.md` 흡수, cross-repo 결합점 검증 포함. **서브의 "완료/통과" 자기 보고는 *클레임이지 증거가 아니다* — 통합·보고 전에 지상검증(소스·보고가 아닌 빌드·서빙 산출물·실측·실제 로그)으로 확인한다. 정확성 중요·비가역 결과는 *구현한 서브가 아닌 독립 검증자* 를 세운다. 상세는 `specs/VERIFICATION.md`(POLICY-VERIFY).**
 6. **사용자 보고** — 결과 전달, 추가 요청 수신. 단일 채널.
@@ -85,6 +85,7 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
 | 사이클 로깅 형식 명세 | CYCLE-LOG |
 | 사이클 종료 후처리 (티켓·커밋·보고서) | CYCLE-CLOSER |
 | 각 레포 내부 워크플로우 (요구사항·설계·코드·테스트·빌드) | **AWS AI-DLC** (그 레포 `aidlc-rules/` 따라) |
+| 하네스 온보딩 절차·설치 대화·사용자 수동 작업 안내 (조건부) | **각 하네스 레포가 소유한 온보딩 룰북** (S9.5에서 서브로 로드 — 절차를 프레임워크에 복제하지 않는다) |
 
 → 위 모든 영역의 *호출 판단·조율*은 본 오케스트레이터 책임.
 
@@ -265,7 +266,7 @@ EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4
 | `ai-dlc-orchestrator/specs/CICD-RELEASE-ADAPTER.md` | CI/CD·릴리스 통합 명세 (POLICY-RELEASE, 조건부, 에이전트 아님) | 릴리스 게이트·EX-13 규율 원천 |
 | `ai-dlc-orchestrator/specs/DEPLOY-ADAPTER.md` | 실행 환경 배포 규율 명세 (POLICY-DEPLOY, 조건부, 에이전트 아님) | DEPLOY-AGENT 실행 룰 원천 / STEP 9.5 착지 후 배포·A-4 |
 | `ai-dlc-orchestrator/specs/ISSUE-TRACKER-ADAPTER.md` | 사이클↔티켓 바인딩 규율 명세 (POLICY-ISSUE-TRACKING, 조건부, 에이전트 아님) | ISSUE-TRACKER-AGENT 실행 룰 원천 / 책임 7 사이클↔티켓 바인딩 |
-| `ai-dlc-orchestrator/specs/HARNESS-CATALOG.md` | 선택적 외부 **하네스**(프레임워크를 바깥에서 구동하는 별도 시스템) 카탈로그 — *목록만*, 온보딩 지식은 각 하네스 레포 소유 (조건부, 에이전트 아님) | SETTER S5.9(사용 여부 인터뷰)·S9.5(최초 설치자 안내) 원천. ⚠️ `templates/extensions/`(AWS 레포 룰 확장)와 **다른 개념** |
+| `ai-dlc-orchestrator/specs/HARNESS-CATALOG.md` | 선택적 외부 **하네스**(프레임워크를 바깥에서 구동하는 별도 시스템) 카탈로그 — *포인터만*(레포 URL·**온보딩 룰북 경로**), 온보딩 지식은 각 하네스 레포 소유 (조건부, 에이전트 아님) | SETTER S5.9(사용 여부 인터뷰)·S9.5(최초 설치자 **위임 실행** — 클론 + 룰북을 서브로) 원천. 책임 3 조건부 위탁 대상의 좌표가 여기 있다. ⚠️ `templates/extensions/`(AWS 레포 룰 확장)와 **다른 개념** |
 | `ai-dlc-orchestrator/specs/EVOLUTION.md` | 룰북 진화·메타 프로세스 명세 (에이전트 아님) | DP-9 진화 분기 룰 원천 |
 | `ai-dlc-orchestrator/templates/HANDOFF.template.md` | 핸드오프 문서 단일 원천 | EX-9 포맷 원천 |
 | `ai-dlc-orchestrator/templates/ORCHESTRATOR.template.md` | 시스템 인스턴스 템플릿 | SETTER가 채워 `dlc-meta/ORCHESTRATOR.md` 생성 |
