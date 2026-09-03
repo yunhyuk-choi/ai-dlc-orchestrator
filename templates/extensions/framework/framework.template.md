@@ -4,6 +4,9 @@
 > 적용·검증·버전 정합은 REPO-SETTER RP6 + AWS-ADAPTER §4가 담당 (본 파일은 중복 명세 안 함 — 원칙 6).
 > 위치(공유 룰북): `ai-dlc-orchestrator/templates/extensions/framework/framework.template.md`
 
+<!-- TEMPLATE-ONLY -->
+> **저작 지시 블록** — 생성 시 이 `TEMPLATE-ONLY` 블록 전체를 마커째 삭제한다 (인스턴스에 남으면 결함. `specs/SYSTEM-WORKFLOW.md` §3.2).
+
 | 메타 | 값 |
 |---|---|
 | 카테고리 / 이름 | framework / framework |
@@ -16,6 +19,7 @@
 | 원천 | Stage 1 `FRAMEWORK.template.md` (D-Stage2-18) |
 
 > **변종 materialize**: 공유 룰북은 제너릭 템플릿 1개. 적용 시 RP6이 `{name}` 결정 후 `{name}/framework.md`로 `{FRAMEWORK_PATTERNS}` 채워 복사. (프레임워크별 사전 작성은 Stage 3 EVOLUTION 큐)
+<!-- /TEMPLATE-ONLY -->
 
 ---
 

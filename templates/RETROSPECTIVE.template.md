@@ -74,7 +74,10 @@
 
 ---
 
+<!-- TEMPLATE-ONLY -->
 ## 부록. 템플릿 사용 가이드 (요약)
+
+> **저작 지시 블록** — 생성 시 이 `TEMPLATE-ONLY` 블록 전체를 마커째 삭제한다 (인스턴스에 남으면 결함. `specs/SYSTEM-WORKFLOW.md` §3.2).
 
 종료 절차(TERMINATION §4.4)에서 채움. 입도는 사이클 성격에 맞춰:
 - **경량** (예외 0·범위 안정·기존 라우팅): §1·§6만 최소 채움, 나머지 "(없음)".
@@ -85,3 +88,4 @@
 - **블록 단위**: `{WHAT_WORKED}` / `{WHAT_FAILED}` / `{RULEBOOK_GAPS}` / `{ENV_GOTCHAS}` / `{VERIFICATION_MISSES}` / `{PROPOSED_RULEBOOK_CHANGES}`
 
 채움 데이터 소스(audit.md entry)·라우팅 절차는 `ai-dlc-orchestrator/agents/orchestrator/TERMINATION.md` §4.4, 진화 소비는 `ai-dlc-orchestrator/specs/EVOLUTION.md` §3.E 참조.
+<!-- /TEMPLATE-ONLY -->

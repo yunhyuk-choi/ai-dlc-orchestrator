@@ -259,7 +259,8 @@ mkdir -p {레포}/aidlc-docs
 | `FRAMEWORK.template.md` | `{레포}/.claude/FRAMEWORK.md` | `{FRAMEWORK_PATTERNS}` ← RP2.4 스택에서 식별된 프레임워크 + RP3.5.1 |
 
 - **생성 방식**: POLICY-ENCODING 준수 — 직접 UTF-8(no-BOM, LF) 쓰기 + materialize 후 손상 스캔·재생성(RP6 인코딩 절차와 동일). POLICY-TEMPLATE-ADHERENCE 준수 — 위 템플릿에서만 파생, 자유 작성 금지.
-- 채울 값이 없는 변수는 빈 자리로 두지 말고 "해당 없음/미정"으로 명시(자리 표시자 `{...}` 잔존 금지 — RP7 체크).
+- 채울 값이 없는 변수는 빈 자리로 두지 말고 "해당 없음/미정"으로 명시(자리 표시자 잔존 금지 — RP7 체크).
+- **템플릿 표기 규약 (`specs/SYSTEM-WORKFLOW.md` §3.2)**: 생성 시 **`<!-- TEMPLATE-ONLY -->` … `<!-- /TEMPLATE-ONLY -->` 블록은 마커째 통째로 삭제**한다(템플릿 저작 지시 — 인스턴스가 지녀야 할 내용이 아니다). 마커 밖 산문은 남긴다. 생성 후 잔존 판정은 §3.2 규칙(미충전 `{UPPER_SNAKE}` 0건 · `TEMPLATE-ONLY` 문자열 0건)을 그대로 쓴다 — 임의 해석 금지.
 - `{REFERENCE_FILES}`(RP3.1)에 위 생성된 동반 파일을 포함하도록 RP5 참조 목록과 정합 유지.
 
 > **주의 — 시스템 스코프 판정(SETTER 위임)**: `WORKFLOW.template.md`와 `DESIGN.template.md`는 *레포 스코프가 아니라 시스템 스코프*로 판정해 본 RP5.5에서 제외했다. 근거: 레포 내부 워크플로우는 AWS AI-DLC에 위임(v3 단순화)되고, 두 템플릿은 시스템 레벨로 재포지셔닝되어 `specs/SYSTEM-WORKFLOW.md`(WORKFLOW) 및 시스템 `DESIGN` 가이드(STEP 2·3 동반)로 이미 흡수되었음(SYSTEM-WORKFLOW.md §6 참조). 이들의 인스턴스화는 시스템 부트스트랩(SETTER) 책임 — REPO-SETTER 범위 밖. SETTER-owner가 시스템 스코프로 처리할 것.
@@ -275,6 +276,8 @@ mkdir -p {레포}/aidlc-docs
 | `templates/extensions/framework/framework.template.md` (→ `{name}/` materialize) | FRAMEWORK.template.md (프레임워크별 변종) | `{레포}/aidlc-rules/aws-aidlc-rule-details/extensions/framework/` |
 
 Extension 변환은 D-Stage2-18에서 완료 (`templates/extensions/`, `*.template.md`). 본 RP6은 *변환 결과 적용*(`{lang}`/`{name}` materialize + 변수 채움 + 복사)만.
+
+> **템플릿 표기 규약**: extension 템플릿 상단의 **`<!-- TEMPLATE-ONLY -->` 블록(메타 표 + 변종 materialize 노트)은 인스턴스에 복사하지 않는다** — 그 표는 *RP6이 읽는 적용 메타*이지 레포에 설치될 규칙 본문이 아니다. 마커째 삭제하고 나머지만 복사한다 (`specs/SYSTEM-WORKFLOW.md` §3.2).
 
 **인코딩 안전 materialize·복사 (POLICY-ENCODING 필수 준수)**:
 
