@@ -643,22 +643,34 @@ git push -u origin HEAD
 > **모든 항목에 판정 명령이 있다. 방법을 지어내지 않는다.** 이전 판에는 일부 항목(예: 인코딩)에만 명령이 없어서, *그 항목만* "봤다"는 클레임과 실측을 구분할 수 없었다(실측된 결함). 아래 표는 항목마다 **무엇을 실행해 무엇을 보고 판정하는지**를 고정한다.
 >
 > - **판정에 쓴 명령과 그 출력 원문을 보고에 싣는다.** 출력 없이 "통과"만 적으면 그것은 클레임이지 증거가 아니다.
-> - **OS 중립**: 아래 명령은 `git`과 `python`(3.x)만 쓴다 — 리눅스·macOS·윈도우에서 같은 결과가 나온다. 셸 전용 문법(`test -f`·`Test-Path`·`type`·`grep`)에 의존하지 않는다.
+> - **OS 중립**: 아래 명령은 `git`과 `python`(3.7+)만 쓴다 — 셸 전용 문법(`test -f`·`Test-Path`·`type`·`grep`)에 의존하지 않으므로 리눅스·macOS·윈도우에서 *같은 판정*이 나온다. 다만 **콘솔 출력 인코딩은 OS 중립이 아니다** → 아래 `[OUT]` 프롤로그가 그 차이를 메운다(생략 금지).
 > - `python`이 없는 환경이면 **동치 판정을 다른 수단으로 하되, 쓴 명령과 출력을 그대로 보고한다.** 실행 불가로 판정 자체를 못 하면 그 항목은 `SKIPPED(사유)` — *조용한 통과 처리 금지*.
 > - 명령 안의 `{메타 레포}`·`{공유리포}`는 실제 절대 경로로 치환해 실행한다.
 
-**공용 스니펫 (아래 표가 이름으로 참조)**
+**[OUT] 출력 인코딩 프롤로그 — 모든 `python` 판정 명령의 첫 구문 (규율 정본: `specs/SYSTEM-WORKFLOW.md` §3.1 POLICY-ENCODING. 빼면 검증 도구가 위반을 만난 순간에만 죽는다)**
+
+```python
+import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');
+```
+
+> **왜 필수인가 (실측된 결함)**: 판정 명령은 위반을 발견했을 때 *그 줄 원문*을 출력한다. 이 프레임워크의 문서·템플릿은 em dash(`—` U+2014)·한국어를 도처에 쓰는데, 비-UTF-8 콘솔(윈도우 cp949 등)에서는 그 문자를 인코딩하지 못해 파이썬이 `UnicodeEncodeError`로 **부분 출력 후 exit 1** 한다.
+> 그 결과가 치명적인 이유는 **실패 방향**이다 — *위반이 없으면 출력이 없으니 조용히 exit 0(통과)이고, 위반이 있을 때만 죽는다.* 순진한 실행자는 이를 "명령 실패"로 읽고 넘어가며, 검증 도구는 **검증해야 할 바로 그 순간에만 무력해진다** (POLICY-VERIFY의 근간이 뒤집힌다).
+> **왜 이 형태인가**: `encoding='utf-8'`은 *검사 대상과 같은 인코딩*으로 출력을 고정한다 — 판정 대상 파일은 POLICY-ENCODING상 항상 UTF-8이므로, 출력도 UTF-8이어야 어느 로케일에서 돌리든 **같은 바이트**가 나오고 보고에 그대로 실을 수 있다(로케일마다 출력이 달라지면 그 자체가 OS 중립 위반이다). `errors='backslashreplace'`는 그래도 남을 수 있는 잔여 케이스(대리 문자 등)에서 죽지 않게 하는 안전망이다 — 결과적으로 **어떤 로케일에서도 exit 0**.
+> `sys.stdout.reconfigure`가 없는 런타임(파이썬 3.6 이하)이면 환경변수 `PYTHONIOENCODING=utf-8`(또는 `utf-8:backslashreplace`)을 앞에 붙여 실행하고, **무엇을 붙였는지 보고에 명시**한다.
+
+**공용 스니펫 (아래 표가 이름으로 참조 — 전부 `[OUT]` 프롤로그로 시작한다)**
 
 ```bash
 # [ENC] POLICY-ENCODING — BOM·U+FFFD·CRLF 검사. 인자 = 검사할 파일들. 출력이 비면 통과.
-python -c "import sys;[print('FAIL',p,[x for x in (('BOM' if b.startswith(b'\xef\xbb\xbf') else ''),('U+FFFD' if b'\xef\xbf\xbd' in b else ''),('CRLF' if b'\r\n' in b else '')) if x]) for p in sys.argv[1:] for b in [open(p,'rb').read()] if b.startswith(b'\xef\xbb\xbf') or b'\xef\xbf\xbd' in b or b'\r\n' in b]" ORCHESTRATOR.md REPO-MAP.md .env.example
+python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');[print('FAIL',p,[x for x in (('BOM' if b.startswith(b'\xef\xbb\xbf') else ''),('U+FFFD' if b'\xef\xbf\xbd' in b else ''),('CRLF' if b'\r\n' in b else '')) if x]) for p in sys.argv[1:] for b in [open(p,'rb').read()] if b.startswith(b'\xef\xbb\xbf') or b'\xef\xbf\xbd' in b or b'\r\n' in b]" ORCHESTRATOR.md REPO-MAP.md .env.example
 
 # [PLH] 미충전 슬롯·저작 지시 잔존 (SYSTEM-WORKFLOW §3.2 판정 규칙). 출력이 비면 통과.
-python -c "import re,sys;[print('FAIL',p,i+1,l.strip()) for p in sys.argv[1:] for i,l in enumerate(open(p,encoding='utf-8').read().splitlines()) if re.search(r'(?<!\$)\{[A-Z][A-Z0-9_]*\}',l) or 'TEMPLATE-ONLY' in l]" ORCHESTRATOR.md REPO-MAP.md
+python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import re;[print('FAIL',p,i+1,l.strip()) for p in sys.argv[1:] for i,l in enumerate(open(p,encoding='utf-8').read().splitlines()) if re.search(r'(?<!\$)\{[A-Z][A-Z0-9_]*\}',l) or 'TEMPLATE-ONLY' in l]" ORCHESTRATOR.md REPO-MAP.md
 
 # [MAP] REPO-MAP 인벤토리 표 무결성 — 슬러그 중복 + 의존 컬럼 dangling 참조.
 #       dup·dangling이 둘 다 빈 리스트면 통과. (표 컬럼: 슬러그 | 원격 | 역할 | 도메인 | 의존)
 python -c "
+import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');
 import collections
 rows=[[c.strip() for c in l.strip().strip('|').split('|')] for l in open('REPO-MAP.md',encoding='utf-8') if l.strip().startswith('|')]
 rows=[r for r in rows if len(r)==5 and not set(r[0])<=set('-: ') and r[0] not in ('슬러그',)]
@@ -671,7 +683,7 @@ print('dangling',sorted(set(dep)-set(slugs)))
 
 # [SEC] 시크릿 값 혼입 후보 추출 — 20자 이상 연속 토큰 유사 문자열. 출력된 줄을 육안 확인해
 #       "변수명 또는 경로"가 아니면 FAIL. 출력이 비면 통과.
-python -c "import re,sys;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l in enumerate(open(p,encoding='utf-8').read().splitlines()) if re.search(r'[A-Za-z0-9+/_-]{20,}',l) and not re.search(r'https?://|[\\\\/]',l)]" ORCHESTRATOR.md ISSUE-TRACKER.md
+python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import re;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l in enumerate(open(p,encoding='utf-8').read().splitlines()) if re.search(r'[A-Za-z0-9+/_-]{20,}',l) and not re.search(r'https?://|[\\\\/]',l)]" ORCHESTRATOR.md ISSUE-TRACKER.md
 ```
 
 **자체 체크 항목** (각 행: 무엇을 · 어떻게 판정 · 판정 기준)
@@ -682,8 +694,8 @@ python -c "import re,sys;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l i
 | 2 | 슬러그→**로컬 해석 경로 존재** + 그 안에 **`.git/`** | `git -C {해석된 경로} rev-parse --git-dir` | 종료코드 0 (경로가 없으면 git이 실패하므로 두 검사를 한 번에 판정) |
 | 3 | **슬러그 중복 없음** + **의존 컬럼이 존재하는 슬러그만** 가리킴 | 공용 스니펫 **[MAP]** | 출력의 `dup`와 `dangling`이 **둘 다 빈 리스트**. 하나라도 비지 않으면 **FAIL**. 출력 원문을 보고에 싣는다 |
 | 4 | **`.env`가 gitignore 됨** (시크릿 누출 방지) | `git -C {메타 레포} check-ignore -v .env` | 종료코드 0(무시됨). 1이면 **FAIL** |
-| 5 | **`.env.example`에 값이 비어 있음** | `python -c "import sys;[print('FAIL',i+1,l) for i,l in enumerate(open('.env.example',encoding='utf-8').read().splitlines()) if l.strip() and not l.lstrip().startswith('#') and not l.rstrip().endswith('=')]"` | 출력 없음. 값이 붙은 줄이 하나라도 있으면 **FAIL** |
-| 5b | **`.env.example` 키가 유도 표대로임** (S8.5 (1) — 벤더 중립) | `python -c "print([l.split('=')[0] for l in open('.env.example',encoding='utf-8').read().splitlines() if l.strip() and not l.startswith('#')])"` | 출력된 키 집합이 S8.5 (1) 유도 표 1~4가 허용한 것과 **정확히 일치**. 인터뷰에 없던 통합의 키가 하나라도 있으면 **FAIL** (쓰지 않는 벤더 키 혼입 — 실측된 결함) |
+| 5 | **`.env.example`에 값이 비어 있음** | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');[print('FAIL',i+1,l) for i,l in enumerate(open('.env.example',encoding='utf-8').read().splitlines()) if l.strip() and not l.lstrip().startswith('#') and not l.rstrip().endswith('=')]"` | 출력 없음. 값이 붙은 줄이 하나라도 있으면 **FAIL** |
+| 5b | **`.env.example` 키가 유도 표대로임** (S8.5 (1) — 벤더 중립) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');print([l.split('=')[0] for l in open('.env.example',encoding='utf-8').read().splitlines() if l.strip() and not l.startswith('#')])"` | 출력된 키 집합이 S8.5 (1) 유도 표 1~4가 허용한 것과 **정확히 일치**. 인터뷰에 없던 통합의 키가 하나라도 있으면 **FAIL** (쓰지 않는 벤더 키 혼입 — 실측된 결함) |
 | 6 | **`.gitignore`가 공유 인스턴스를 무시하지 않음** | `git -C {메타 레포} check-ignore ORCHESTRATOR.md REPO-MAP.md cycles/.gitkeep` (+ 조건부 `ISSUE-TRACKER.md`) | 종료코드 1 **이고 출력 없음**(=아무것도 무시되지 않음). 하나라도 출력되면 **FAIL** |
 | 7 | **공유 인스턴스 추적·커밋 성사** (S8.6) | `git -C {메타 레포} log -1 --oneline` · `git -C {메타 레포} rev-parse HEAD @{u}` · `git -C {메타 레포} status --porcelain` | 커밋 보임 · 두 해시 동일(push 반영) · porcelain 출력이 `.env` 외 없음. 미성사 **FAIL** |
 | 8 | **`cycles/` 추적 성사** | `git -C {메타 레포} ls-files cycles/` | 출력이 비어 있지 않음(`.gitkeep` 추적됨). 비면 **FAIL** |
@@ -691,10 +703,10 @@ python -c "import re,sys;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l i
 | 10 | **초기 브랜치명이 인터뷰 답변과 일치** (S6 — 신규만) | `git -C {메타 레포} symbolic-ref --short HEAD` (커밋 전후 모두 동작 — `rev-parse --abbrev-ref`는 첫 커밋 전에 실패한다) | 출력 == Q5.4 보호 브랜치명. 다르면 **FAIL**(합류자가 기대하는 브랜치와 어긋남 — 실측된 결함). Q5.4 미지정이면 `SKIPPED(미지정)` + **실측값을 보고에 명시** |
 | 11 | **미충전 슬롯·저작 지시 잔존 없음** (전 인스턴스) | 공용 스니펫 **[PLH]** — 대상: `ORCHESTRATOR.md`·`REPO-MAP.md`·(조건부)`ISSUE-TRACKER.md` | 출력 없음. 판정 규칙 정본은 `specs/SYSTEM-WORKFLOW.md` §3.2 — **무엇이 위반이고 무엇이 정상 중괄호인지 그 표를 따르고 임의 해석하지 않는다** |
 | 12 | **생성 파일이 UTF-8(BOM 없음)·LF** | 공용 스니펫 **[ENC]** — 대상: 위 인스턴스 + `.env.example`·`.gitattributes`·`{공유리포}/.claude/orchestrator-selfcheck.txt` | 출력 없음. BOM·U+FFFD·CRLF 중 하나라도 나오면 **FAIL → 재생성**(POLICY-ENCODING) |
-| 13 | **(조건부, S5.7) 트래커 config 정합** | 운영 시: 항목 11·12를 `ISSUE-TRACKER.md`에 적용 + 공용 스니펫 **[SEC]** + 선택된 type 헤딩만 있는지 `python -c "print([l for l in open('ISSUE-TRACKER.md',encoding='utf-8') if l.startswith('### ')])"` / 미운영 시: `python -c "import os;print(os.path.exists('ISSUE-TRACKER.md'))"` | 운영: 11·12 통과 · [SEC] 출력의 모든 줄이 *변수명 또는 경로* · type 헤딩 1개 / 미운영: `False`(파일 없음). 어긋나면 **FAIL** |
-| 14 | **(조건부, S5.8) 축적 지식 원천 기록 정합** | 운영 시: `python -c "t=open('ORCHESTRATOR.md',encoding='utf-8').read();print('## 축적 지식 원천' in t, '작업 후 갱신' in t)"` + 공용 스니펫 **[SEC]** / 미운영 시: 같은 명령의 첫 값이 `False` | 운영: 첫 값 `True` · [SEC] 통과 · Q5.8.4가 "쓰기 불가"면 둘째 값이 `False` / 미운영: 첫 값 `False`(섹션 자체가 없음). 어긋나면 **FAIL** |
-| 15 | **메타 레포 위치 마커** (S6.5) | `python -c "d=dict(l.split('=',1) for l in open(r'{공유리포}/.claude/dlc-meta-location.txt',encoding='utf-8').read().splitlines() if '=' in l and not l.startswith('#'));import os;print(d['META_REPO_PATH'], os.path.isdir(d['META_REPO_PATH']))"` + `git -C {공유리포} check-ignore .claude/dlc-meta-location.txt` | 경로가 실제 디렉토리(`True`) · check-ignore 종료코드 0(무시됨 — 추적되면 **FAIL**). 환경 제약으로 쓰지 못했으면 **`SKIPPED(degraded, 사유)`** (**FAIL 아님** — C FALLBACK. 다음 세션은 `CLAUDE.md` §0-2 폴백) |
-| 16 | **세션 자가점검 훅 설치 성사** (S8.7) | 채택한 **훅 명령을 실제로 실행**한 stdout + `python -c "import json;json.load(open(r'{공유리포}/.claude/settings.local.json',encoding='utf-8'));print('valid json')"` + `git -C {공유리포} check-ignore .claude/settings.local.json .claude/orchestrator-selfcheck.txt` | stdout 첫 줄이 `[SELFCHECK {n}]`이고 무손상(항목 12 [ENC]로 재확인) · `valid json` · 기존 사용자 키 보존 · 두 개인 산출물 모두 무시됨 |
+| 13 | **(조건부, S5.7) 트래커 config 정합** | 운영 시: 항목 11·12를 `ISSUE-TRACKER.md`에 적용 + 공용 스니펫 **[SEC]** + 선택된 type 헤딩만 있는지 `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');print([l for l in open('ISSUE-TRACKER.md',encoding='utf-8') if l.startswith('### ')])"` / 미운영 시: `python -c "import os;print(os.path.exists('ISSUE-TRACKER.md'))"` | 운영: 11·12 통과 · [SEC] 출력의 모든 줄이 *변수명 또는 경로* · type 헤딩 1개 / 미운영: `False`(파일 없음). 어긋나면 **FAIL** |
+| 14 | **(조건부, S5.8) 축적 지식 원천 기록 정합** | 운영 시: `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');t=open('ORCHESTRATOR.md',encoding='utf-8').read();print('## 축적 지식 원천' in t, '작업 후 갱신' in t)"` + 공용 스니펫 **[SEC]** / 미운영 시: 같은 명령의 첫 값이 `False` | 운영: 첫 값 `True` · [SEC] 통과 · Q5.8.4가 "쓰기 불가"면 둘째 값이 `False` / 미운영: 첫 값 `False`(섹션 자체가 없음). 어긋나면 **FAIL** |
+| 15 | **메타 레포 위치 마커** (S6.5) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');d=dict(l.split('=',1) for l in open(r'{공유리포}/.claude/dlc-meta-location.txt',encoding='utf-8').read().splitlines() if '=' in l and not l.startswith('#'));import os;print(d['META_REPO_PATH'], os.path.isdir(d['META_REPO_PATH']))"` + `git -C {공유리포} check-ignore .claude/dlc-meta-location.txt` | 경로가 실제 디렉토리(`True`) · check-ignore 종료코드 0(무시됨 — 추적되면 **FAIL**). 환경 제약으로 쓰지 못했으면 **`SKIPPED(degraded, 사유)`** (**FAIL 아님** — C FALLBACK. 다음 세션은 `CLAUDE.md` §0-2 폴백) |
+| 16 | **세션 자가점검 훅 설치 성사** (S8.7) | 채택한 **훅 명령을 실제로 실행**한 stdout + `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import json;json.load(open(r'{공유리포}/.claude/settings.local.json',encoding='utf-8'));print('valid json')"` + `git -C {공유리포} check-ignore .claude/settings.local.json .claude/orchestrator-selfcheck.txt` | stdout 첫 줄이 `[SELFCHECK {n}]`이고 무손상(항목 12 [ENC]로 재확인) · `valid json` · 기존 사용자 키 보존 · 두 개인 산출물 모두 무시됨 |
 
 - 항목 16 보충 — 미성사이되 **환경 제약으로 설치 불가**면(S8.7 (5) 절차 완료 — 마커 기록 또는 세션 1회 한도 적용) **`SKIPPED(degraded, 사유)`** 로 보고한다. **FAIL 아님** — EX-15는 C FALLBACK이고 부트스트랩은 성공이다.
 - 항목 16 보충 — 설치 가능한 환경인데 절차 미이행·검증 누락으로 미성사면 **FAIL** (POLICY-VERIFY — 클레임만 하고 실측을 안 한 경우가 여기다).
