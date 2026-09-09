@@ -1,6 +1,6 @@
 # SELF-CHECK.template.md — 오케스트레이터 세션 자가점검 주입문 (단일 원천)
 
-> **인스턴스 산출물의 템플릿** (POLICY-TEMPLATE-ADHERENCE). SETTER(S8.7)가 이 템플릿에서 머신 로컬 주입문 파일 `{공유리포}/.claude/orchestrator-selfcheck.txt`(개인 — gitignore)을 생성하고, 같은 디렉토리 `settings.local.json`의 `UserPromptSubmit` 훅이 **매 프롬프트마다** 그 파일을 stdout으로 흘린다.
+> **인스턴스 산출물의 템플릿** (POLICY-TEMPLATE-ADHERENCE). SETTER(S8.7)가 이 템플릿에서 머신 로컬 주입문 파일 `공유리포/.claude/orchestrator-selfcheck.txt`(개인 — gitignore)을 생성하고, 같은 디렉토리 `settings.local.json`의 `UserPromptSubmit` 훅이 **매 프롬프트마다** 그 파일을 stdout으로 흘린다.
 > 훅 stdout은 런타임이 컨텍스트에 주입한다 — *모델의 자발적 Read가 아니라 기계적 주입*이라, 컨텍스트 압축이 무엇을 지우든 다음 턴에 되살아난다.
 > 위치: `ai-dlc-orchestrator/templates/SELF-CHECK.template.md`
 
@@ -35,7 +35,7 @@ SELFCHECK-CONTRACT: v1
 
 ## 2. 주입 본문
 
-아래 펜스 블록 **안쪽 내용이 그대로** `{공유리포}/.claude/orchestrator-selfcheck.txt` 가 된다. `{n}`은 §1 계약 버전으로 치환한다.
+아래 펜스 블록 **안쪽 내용이 그대로** `공유리포/.claude/orchestrator-selfcheck.txt` 가 된다. `{n}`은 §1 계약 버전으로 치환한다.
 
 ```text
 [SELFCHECK {n}] 나는 ai-dlc 오케스트레이터(팀장)다. 코어 룰북: agents/orchestrator/ORCHESTRATOR-AGENT.md

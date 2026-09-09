@@ -199,19 +199,25 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
   - 원격(`{Q2.4}`)에 인스턴스가 이미 있음 → **합류** (clone, 인스턴스 재생성 안 함). *에러 아님*
   - 없음 → **신규** (이 SETTER가 부트스트랩 + 원격 생성)
   - 로컬 위치 충돌(이미 다른 내용 존재)만 에러
+  - ⚠️ **판정 근거는 원격 실조회뿐이다.** 호출 컨텍스트에 "신규로 부트스트랩하라"·"합류다" 같은 **모드 라벨이 함께 왔더라도 그것을 판정 근거로 쓰지 않는다** — 호출자가 받은 것은 *사용자의 자기신고*이고, 그 신고가 틀리면 **합류자를 신규로 몰아 팀 인스턴스를 덮어쓴다**(비가역·실측된 위험). 라벨과 실조회가 어긋나면 **실조회가 이긴다**. 진입점도 같은 규율을 반대편에서 지킨다(`CLAUDE.md` §0-2 폴백 — 호출자는 라벨을 붙이지 않는다).
+  - **신규/합류 어느 쪽인지는 이 단계에서 확정되며, 그 결과가 §5 모드표(수행/스킵)와 S2 인터뷰 범위를 결정한다.**
 - 필요 권한 체크 (디렉토리 생성, git 초기화, 원격 push/clone — 자격증명은 S8.5 `.env`)
 - 실패 시 오케스트레이터에 보고 후 종료
 
 #### S2. 메타 레포 위치/이름 인터뷰
 
-| ID | 질문 | 기본/추천 |
-|---|---|---|
-| Q2.1 | 메타 레포 이름? | `dlc-meta` |
-| Q2.2 | 메타 레포 로컬 절대 경로? | (없음) |
-| Q2.3 | `git init` 진행할까? (신규 시) | yes |
-| Q2.4 | **dlc-meta 공유 원격 URL?** (GitLab 등) | (없음) — *이미 있으면 합류(clone), 없으면 신규 생성·push* |
+**묻는 순서가 고정이다 — Q2.4를 먼저 확정한다.** Q2.4가 신규/합류를 가르고(S1 판정), *합류면 Q2.1·Q2.3이 물을 것이 없어지기 때문*이다. 오케스트레이터가 진입점 폴백에서 이미 원격 URL·로컬 경로를 받아 넘겼으면(`CLAUDE.md` §0-2 폴백 (b)) 그 값을 Q2.4·Q2.2 응답으로 삼고 다시 묻지 않는다.
 
-> Q2.4가 신규/합류를 가른다 (S1 판정). 합류면 S3~S8(인터뷰·인스턴스 생성) 스킵하고 clone — 인스턴스는 팀원이 이미 채움.
+| ID | 질문 | 기본/추천 | 합류일 때 |
+|---|---|---|---|
+| Q2.4 | **dlc-meta 공유 원격 URL?** (GitLab 등) | (없음) — *이미 있으면 합류(clone), 없으면 신규 생성·push* | **먼저 확정** — 이 값이 분기의 원천 |
+| Q2.1 | 메타 레포 이름? | `dlc-meta` | **묻지 않는다 — 원격 URL이 완전히 결정한다** (아래) |
+| Q2.2 | 메타 레포 로컬 절대 경로? | (없음) | 묻는다 (머신마다 다름) |
+| Q2.3 | `git init` 진행할까? (신규 시) | yes | **묻지 않는다** (clone이 레포를 만든다) |
+
+> **합류 시 Q2.1 유도 규칙 (묻지 않는다 — 추측도 하지 않는다)**: 메타 레포 이름은 **Q2.4 원격 URL의 basename에서 유도**한다 — 마지막 경로 세그먼트에서 `.git` 접미사를 제거한 값(예: `…/team/dlc-meta.git` → `dlc-meta`). 합류자에게 이름은 *선택지가 아니다*: 로컬 디렉토리명이 원격과 어긋나면 팀원 간 경로 규약(`{Q2.2}/{Q2.1}`)과 하네스 클론의 형제 위치 규약이 사람마다 갈라진다. **사용자가 명시적으로 다른 로컬 디렉토리명을 요구할 때만** 그 값을 쓴다.
+> 신규일 때만 Q2.1을 묻는다(아직 원격이 없어 유도할 원천이 없다).
+> 합류면 S3~S8(인터뷰·인스턴스 생성)을 스킵하고 clone — 인스턴스는 팀원이 이미 채움.
 
 #### S3. 대상 레포 식별 방식 인터뷰
 
@@ -499,6 +505,7 @@ RECORDED_AT={ISO 날짜}
 
 - **자동화가 접근하지 않는 통합의 키는 넣지 않는다.** 사람이 브라우저로만 쓰는 서비스는 `.env` 대상이 아니다.
 - 조건이 하나도 걸리지 않으면 매니페스트는 `WORKSPACE_ROOT` 한 줄이다 — **그것이 정상**이다(범용 전제).
+- **합류 모드는 인터뷰 응답이 없으므로 조건 2~4가 발동할 수 없다 — 유도 표에서 `1`만 적용된다.** 따라서 합류자가 보강하는 것은 `WORKSPACE_ROOT` 하나뿐이고, 원격에서 받은 나머지 키는 팀 산출물이므로 손대지 않는다(판정 기준은 S9 항목 5b 모드별 표).
 - **값은 어떤 키에도 적지 않는다** (자격증명 경계). 주석으로도 예시 토큰을 적지 않는다.
 
 **(2)~(4) 자격증명 부트스트랩**
@@ -545,9 +552,20 @@ git diff --cached --name-only | grep -qx '.env' && { echo 'ABORT: .env staged �
 #     신규: 기준 브랜치 = S6에서 확정한 {초기 브랜치명}(= Q5.4 보호 브랜치명). 합류: 원격 디폴트 브랜치.
 git symbolic-ref --short HEAD      # ★ push 전에 실측 — Q5.4 답변과 다르면 멈춘다 (S6 초기 브랜치명 규정)
 #     ↑ `rev-parse --abbrev-ref HEAD`는 *첫 커밋 전*(unborn HEAD)에 실패한다. symbolic-ref는 커밋 전후 모두 동작한다 (실증 확인).
-git commit -m "bootstrap: dlc-meta 시스템 인스턴스 (ORCHESTRATOR·REPO-MAP·cycles)"
-git push -u origin HEAD
+git commit -m "{Q5.3 컨벤션대로 조립한 메시지}"     # ★ 하드코딩 금지 — 아래 「자기 규약 준수」 참조
+git push -u origin HEAD                            # ★ 아래 「보호 브랜치 직접 push 예외」의 조건을 먼저 확인
 ```
+
+**자기 규약 준수 — 첫 커밋부터 자기가 수집한 컨벤션을 지킨다 (실측된 결함: 세 단계 앞에서 모은 규약을 이 단계가 스스로 어겼다)**
+
+S5(Q5.3~Q5.6)에서 *이 시스템의* 커밋·브랜치·MR 규약을 수집해 `ORCHESTRATOR.md`에 기록해 놓고, 정작 **공유 레포의 첫 커밋**이 그 규약 밖이면 팀이 처음 보는 이력이 위반으로 시작한다.
+
+| 항목 | 규칙 |
+|---|---|
+| **커밋 메시지** | **Q5.3에서 수집한 컨벤션대로 조립한다.** 위 펜스의 문자열은 *하드코딩된 정답이 아니라 자리표*다. 예: Q5.3이 Conventional Commits면 `chore(bootstrap): dlc-meta 시스템 인스턴스 (ORCHESTRATOR·REPO-MAP·cycles)`, 자유 형식이면 그 형식대로. **Q5.3 미지정일 때만** 위 `bootstrap: …` 형태를 폴백으로 쓰고, *폴백을 썼다는 사실을 보고에 명시*한다 |
+| **보호 브랜치 직접 push 예외** | Q5.4가 "직접 push 금지·MR 필수"여도 **이 첫 커밋만은 예외**이고, 그 예외는 **좁고 검증 가능하다**: *원격에 아직 아무 커밋도 없어 MR을 열 대상 브랜치가 존재하지 않기* 때문이다(빈 원격에는 base가 없다). 따라서 아래 두 조건을 **실측으로** 확인하고서만 직접 push 한다 — ① 신규 모드일 것 ② (1)의 `git fetch` 후 원격에 브랜치·커밋이 **없을 것**(`git ls-remote --heads origin` 출력이 비어 있음). 하나라도 아니면 **직접 push 하지 않는다** — 신규가 아니라 합류여야 하므로 멈추고 S1 분기를 재확인한다 |
+| **예외의 유효 범위** | 이 예외는 **부트스트랩 첫 커밋 한 번**뿐이다. 이후 `dlc-meta`의 모든 변경(인스턴스 갱신·하네스 기록·사이클 로그)은 **Q5.4 규약을 그대로 따른다** — S9.5-b의 기록·push도 포함된다(그 시점엔 원격에 이미 base가 있다) |
+| **보고 의무** | 예외를 사용했으면 S9 보고에 *무엇을·왜*(빈 원격이라 MR 대상이 없음)를 한 줄로 싣는다. 조용히 지나가면 다음 사람이 이것을 "직접 push해도 되는 레포"로 오해한다 |
 
 > **`git symbolic-ref --short HEAD` 출력이 Q5.4 보호 브랜치명과 다르면 push하지 않는다.** 원격에 잘못된 이름으로 올라가면 그것이 원격 디폴트가 되고, 이후 합류자·MR·CI가 전부 그 이름을 따른다 — 되돌리려면 원격 설정까지 손봐야 한다. 아직 커밋 전이면 S6의 `git symbolic-ref HEAD refs/heads/{초기 브랜치명}`을 다시 실행하고, 이미 커밋했으면 `git branch -m {초기 브랜치명}` 후 재확인한다. Q5.4가 미지정이면 이 비교를 하지 않고 *실측값을 보고에 싣는다*.
 
@@ -643,22 +661,34 @@ git push -u origin HEAD
 > **모든 항목에 판정 명령이 있다. 방법을 지어내지 않는다.** 이전 판에는 일부 항목(예: 인코딩)에만 명령이 없어서, *그 항목만* "봤다"는 클레임과 실측을 구분할 수 없었다(실측된 결함). 아래 표는 항목마다 **무엇을 실행해 무엇을 보고 판정하는지**를 고정한다.
 >
 > - **판정에 쓴 명령과 그 출력 원문을 보고에 싣는다.** 출력 없이 "통과"만 적으면 그것은 클레임이지 증거가 아니다.
-> - **OS 중립**: 아래 명령은 `git`과 `python`(3.x)만 쓴다 — 리눅스·macOS·윈도우에서 같은 결과가 나온다. 셸 전용 문법(`test -f`·`Test-Path`·`type`·`grep`)에 의존하지 않는다.
+> - **OS 중립**: 아래 명령은 `git`과 `python`(3.7+)만 쓴다 — 셸 전용 문법(`test -f`·`Test-Path`·`type`·`grep`)에 의존하지 않으므로 리눅스·macOS·윈도우에서 *같은 판정*이 나온다. 다만 **콘솔 출력 인코딩은 OS 중립이 아니다** → 아래 `[OUT]` 프롤로그가 그 차이를 메운다(생략 금지).
 > - `python`이 없는 환경이면 **동치 판정을 다른 수단으로 하되, 쓴 명령과 출력을 그대로 보고한다.** 실행 불가로 판정 자체를 못 하면 그 항목은 `SKIPPED(사유)` — *조용한 통과 처리 금지*.
 > - 명령 안의 `{메타 레포}`·`{공유리포}`는 실제 절대 경로로 치환해 실행한다.
 
-**공용 스니펫 (아래 표가 이름으로 참조)**
+**[OUT] 출력 인코딩 프롤로그 — 모든 `python` 판정 명령의 첫 구문 (규율 정본: `specs/SYSTEM-WORKFLOW.md` §3.1 POLICY-ENCODING. 빼면 검증 도구가 위반을 만난 순간에만 죽는다)**
+
+```python
+import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');
+```
+
+> **왜 필수인가 (실측된 결함)**: 판정 명령은 위반을 발견했을 때 *그 줄 원문*을 출력한다. 이 프레임워크의 문서·템플릿은 em dash(`—` U+2014)·한국어를 도처에 쓰는데, 비-UTF-8 콘솔(윈도우 cp949 등)에서는 그 문자를 인코딩하지 못해 파이썬이 `UnicodeEncodeError`로 **부분 출력 후 exit 1** 한다.
+> 그 결과가 치명적인 이유는 **실패 방향**이다 — *위반이 없으면 출력이 없으니 조용히 exit 0(통과)이고, 위반이 있을 때만 죽는다.* 순진한 실행자는 이를 "명령 실패"로 읽고 넘어가며, 검증 도구는 **검증해야 할 바로 그 순간에만 무력해진다** (POLICY-VERIFY의 근간이 뒤집힌다).
+> **왜 이 형태인가**: `encoding='utf-8'`은 *검사 대상과 같은 인코딩*으로 출력을 고정한다 — 판정 대상 파일은 POLICY-ENCODING상 항상 UTF-8이므로, 출력도 UTF-8이어야 어느 로케일에서 돌리든 **같은 바이트**가 나오고 보고에 그대로 실을 수 있다(로케일마다 출력이 달라지면 그 자체가 OS 중립 위반이다). `errors='backslashreplace'`는 그래도 남을 수 있는 잔여 케이스(대리 문자 등)에서 죽지 않게 하는 안전망이다 — 결과적으로 **어떤 로케일에서도 exit 0**.
+> `sys.stdout.reconfigure`가 없는 런타임(파이썬 3.6 이하)이면 환경변수 `PYTHONIOENCODING=utf-8`(또는 `utf-8:backslashreplace`)을 앞에 붙여 실행하고, **무엇을 붙였는지 보고에 명시**한다.
+
+**공용 스니펫 (아래 표가 이름으로 참조 — 전부 `[OUT]` 프롤로그로 시작한다)**
 
 ```bash
 # [ENC] POLICY-ENCODING — BOM·U+FFFD·CRLF 검사. 인자 = 검사할 파일들. 출력이 비면 통과.
-python -c "import sys;[print('FAIL',p,[x for x in (('BOM' if b.startswith(b'\xef\xbb\xbf') else ''),('U+FFFD' if b'\xef\xbf\xbd' in b else ''),('CRLF' if b'\r\n' in b else '')) if x]) for p in sys.argv[1:] for b in [open(p,'rb').read()] if b.startswith(b'\xef\xbb\xbf') or b'\xef\xbf\xbd' in b or b'\r\n' in b]" ORCHESTRATOR.md REPO-MAP.md .env.example
+python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');[print('FAIL',p,[x for x in (('BOM' if b.startswith(b'\xef\xbb\xbf') else ''),('U+FFFD' if b'\xef\xbf\xbd' in b else ''),('CRLF' if b'\r\n' in b else '')) if x]) for p in sys.argv[1:] for b in [open(p,'rb').read()] if b.startswith(b'\xef\xbb\xbf') or b'\xef\xbf\xbd' in b or b'\r\n' in b]" ORCHESTRATOR.md REPO-MAP.md .env.example
 
 # [PLH] 미충전 슬롯·저작 지시 잔존 (SYSTEM-WORKFLOW §3.2 판정 규칙). 출력이 비면 통과.
-python -c "import re,sys;[print('FAIL',p,i+1,l.strip()) for p in sys.argv[1:] for i,l in enumerate(open(p,encoding='utf-8').read().splitlines()) if re.search(r'(?<!\$)\{[A-Z][A-Z0-9_]*\}',l) or 'TEMPLATE-ONLY' in l]" ORCHESTRATOR.md REPO-MAP.md
+python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import re;[print('FAIL',p,i+1,l.strip()) for p in sys.argv[1:] for i,l in enumerate(open(p,encoding='utf-8').read().splitlines()) if re.search(r'(?<!\$)\{[A-Z][A-Z0-9_]*\}',l) or 'TEMPLATE-ONLY' in l]" ORCHESTRATOR.md REPO-MAP.md
 
 # [MAP] REPO-MAP 인벤토리 표 무결성 — 슬러그 중복 + 의존 컬럼 dangling 참조.
 #       dup·dangling이 둘 다 빈 리스트면 통과. (표 컬럼: 슬러그 | 원격 | 역할 | 도메인 | 의존)
 python -c "
+import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');
 import collections
 rows=[[c.strip() for c in l.strip().strip('|').split('|')] for l in open('REPO-MAP.md',encoding='utf-8') if l.strip().startswith('|')]
 rows=[r for r in rows if len(r)==5 and not set(r[0])<=set('-: ') and r[0] not in ('슬러그',)]
@@ -671,7 +701,7 @@ print('dangling',sorted(set(dep)-set(slugs)))
 
 # [SEC] 시크릿 값 혼입 후보 추출 — 20자 이상 연속 토큰 유사 문자열. 출력된 줄을 육안 확인해
 #       "변수명 또는 경로"가 아니면 FAIL. 출력이 비면 통과.
-python -c "import re,sys;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l in enumerate(open(p,encoding='utf-8').read().splitlines()) if re.search(r'[A-Za-z0-9+/_-]{20,}',l) and not re.search(r'https?://|[\\\\/]',l)]" ORCHESTRATOR.md ISSUE-TRACKER.md
+python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import re;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l in enumerate(open(p,encoding='utf-8').read().splitlines()) if re.search(r'[A-Za-z0-9+/_-]{20,}',l) and not re.search(r'https?://|[\\\\/]',l)]" ORCHESTRATOR.md ISSUE-TRACKER.md
 ```
 
 **자체 체크 항목** (각 행: 무엇을 · 어떻게 판정 · 판정 기준)
@@ -682,8 +712,8 @@ python -c "import re,sys;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l i
 | 2 | 슬러그→**로컬 해석 경로 존재** + 그 안에 **`.git/`** | `git -C {해석된 경로} rev-parse --git-dir` | 종료코드 0 (경로가 없으면 git이 실패하므로 두 검사를 한 번에 판정) |
 | 3 | **슬러그 중복 없음** + **의존 컬럼이 존재하는 슬러그만** 가리킴 | 공용 스니펫 **[MAP]** | 출력의 `dup`와 `dangling`이 **둘 다 빈 리스트**. 하나라도 비지 않으면 **FAIL**. 출력 원문을 보고에 싣는다 |
 | 4 | **`.env`가 gitignore 됨** (시크릿 누출 방지) | `git -C {메타 레포} check-ignore -v .env` | 종료코드 0(무시됨). 1이면 **FAIL** |
-| 5 | **`.env.example`에 값이 비어 있음** | `python -c "import sys;[print('FAIL',i+1,l) for i,l in enumerate(open('.env.example',encoding='utf-8').read().splitlines()) if l.strip() and not l.lstrip().startswith('#') and not l.rstrip().endswith('=')]"` | 출력 없음. 값이 붙은 줄이 하나라도 있으면 **FAIL** |
-| 5b | **`.env.example` 키가 유도 표대로임** (S8.5 (1) — 벤더 중립) | `python -c "print([l.split('=')[0] for l in open('.env.example',encoding='utf-8').read().splitlines() if l.strip() and not l.startswith('#')])"` | 출력된 키 집합이 S8.5 (1) 유도 표 1~4가 허용한 것과 **정확히 일치**. 인터뷰에 없던 통합의 키가 하나라도 있으면 **FAIL** (쓰지 않는 벤더 키 혼입 — 실측된 결함) |
+| 5 | **`.env.example`에 값이 비어 있음** | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');[print('FAIL',i+1,l) for i,l in enumerate(open('.env.example',encoding='utf-8').read().splitlines()) if l.strip() and not l.lstrip().startswith('#') and not l.rstrip().endswith('=')]"` | 출력 없음. 값이 붙은 줄이 하나라도 있으면 **FAIL** |
+| 5b | **`.env.example` 키가 유도 표대로임** (S8.5 (1) — 벤더 중립) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');print([l.split('=')[0] for l in open('.env.example',encoding='utf-8').read().splitlines() if l.strip() and not l.startswith('#')])"` | **모드마다 기준이 다르다 — 아래 「항목 5b 모드별 합격 기준」을 따르고 즉흥으로 메우지 않는다.** |
 | 6 | **`.gitignore`가 공유 인스턴스를 무시하지 않음** | `git -C {메타 레포} check-ignore ORCHESTRATOR.md REPO-MAP.md cycles/.gitkeep` (+ 조건부 `ISSUE-TRACKER.md`) | 종료코드 1 **이고 출력 없음**(=아무것도 무시되지 않음). 하나라도 출력되면 **FAIL** |
 | 7 | **공유 인스턴스 추적·커밋 성사** (S8.6) | `git -C {메타 레포} log -1 --oneline` · `git -C {메타 레포} rev-parse HEAD @{u}` · `git -C {메타 레포} status --porcelain` | 커밋 보임 · 두 해시 동일(push 반영) · porcelain 출력이 `.env` 외 없음. 미성사 **FAIL** |
 | 8 | **`cycles/` 추적 성사** | `git -C {메타 레포} ls-files cycles/` | 출력이 비어 있지 않음(`.gitkeep` 추적됨). 비면 **FAIL** |
@@ -691,10 +721,18 @@ python -c "import re,sys;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l i
 | 10 | **초기 브랜치명이 인터뷰 답변과 일치** (S6 — 신규만) | `git -C {메타 레포} symbolic-ref --short HEAD` (커밋 전후 모두 동작 — `rev-parse --abbrev-ref`는 첫 커밋 전에 실패한다) | 출력 == Q5.4 보호 브랜치명. 다르면 **FAIL**(합류자가 기대하는 브랜치와 어긋남 — 실측된 결함). Q5.4 미지정이면 `SKIPPED(미지정)` + **실측값을 보고에 명시** |
 | 11 | **미충전 슬롯·저작 지시 잔존 없음** (전 인스턴스) | 공용 스니펫 **[PLH]** — 대상: `ORCHESTRATOR.md`·`REPO-MAP.md`·(조건부)`ISSUE-TRACKER.md` | 출력 없음. 판정 규칙 정본은 `specs/SYSTEM-WORKFLOW.md` §3.2 — **무엇이 위반이고 무엇이 정상 중괄호인지 그 표를 따르고 임의 해석하지 않는다** |
 | 12 | **생성 파일이 UTF-8(BOM 없음)·LF** | 공용 스니펫 **[ENC]** — 대상: 위 인스턴스 + `.env.example`·`.gitattributes`·`{공유리포}/.claude/orchestrator-selfcheck.txt` | 출력 없음. BOM·U+FFFD·CRLF 중 하나라도 나오면 **FAIL → 재생성**(POLICY-ENCODING) |
-| 13 | **(조건부, S5.7) 트래커 config 정합** | 운영 시: 항목 11·12를 `ISSUE-TRACKER.md`에 적용 + 공용 스니펫 **[SEC]** + 선택된 type 헤딩만 있는지 `python -c "print([l for l in open('ISSUE-TRACKER.md',encoding='utf-8') if l.startswith('### ')])"` / 미운영 시: `python -c "import os;print(os.path.exists('ISSUE-TRACKER.md'))"` | 운영: 11·12 통과 · [SEC] 출력의 모든 줄이 *변수명 또는 경로* · type 헤딩 1개 / 미운영: `False`(파일 없음). 어긋나면 **FAIL** |
-| 14 | **(조건부, S5.8) 축적 지식 원천 기록 정합** | 운영 시: `python -c "t=open('ORCHESTRATOR.md',encoding='utf-8').read();print('## 축적 지식 원천' in t, '작업 후 갱신' in t)"` + 공용 스니펫 **[SEC]** / 미운영 시: 같은 명령의 첫 값이 `False` | 운영: 첫 값 `True` · [SEC] 통과 · Q5.8.4가 "쓰기 불가"면 둘째 값이 `False` / 미운영: 첫 값 `False`(섹션 자체가 없음). 어긋나면 **FAIL** |
-| 15 | **메타 레포 위치 마커** (S6.5) | `python -c "d=dict(l.split('=',1) for l in open(r'{공유리포}/.claude/dlc-meta-location.txt',encoding='utf-8').read().splitlines() if '=' in l and not l.startswith('#'));import os;print(d['META_REPO_PATH'], os.path.isdir(d['META_REPO_PATH']))"` + `git -C {공유리포} check-ignore .claude/dlc-meta-location.txt` | 경로가 실제 디렉토리(`True`) · check-ignore 종료코드 0(무시됨 — 추적되면 **FAIL**). 환경 제약으로 쓰지 못했으면 **`SKIPPED(degraded, 사유)`** (**FAIL 아님** — C FALLBACK. 다음 세션은 `CLAUDE.md` §0-2 폴백) |
-| 16 | **세션 자가점검 훅 설치 성사** (S8.7) | 채택한 **훅 명령을 실제로 실행**한 stdout + `python -c "import json;json.load(open(r'{공유리포}/.claude/settings.local.json',encoding='utf-8'));print('valid json')"` + `git -C {공유리포} check-ignore .claude/settings.local.json .claude/orchestrator-selfcheck.txt` | stdout 첫 줄이 `[SELFCHECK {n}]`이고 무손상(항목 12 [ENC]로 재확인) · `valid json` · 기존 사용자 키 보존 · 두 개인 산출물 모두 무시됨 |
+| 13 | **(조건부, S5.7) 트래커 config 정합** | 운영 시: 항목 11·12를 `ISSUE-TRACKER.md`에 적용 + 공용 스니펫 **[SEC]** + 선택된 type 헤딩만 있는지 `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');print([l for l in open('ISSUE-TRACKER.md',encoding='utf-8') if l.startswith('### ')])"` / 미운영 시: `python -c "import os;print(os.path.exists('ISSUE-TRACKER.md'))"` | 운영: 11·12 통과 · [SEC] 출력의 모든 줄이 *변수명 또는 경로* · type 헤딩 1개 / 미운영: `False`(파일 없음). 어긋나면 **FAIL** |
+| 14 | **(조건부, S5.8) 축적 지식 원천 기록 정합** | 운영 시: `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');t=open('ORCHESTRATOR.md',encoding='utf-8').read();print('## 축적 지식 원천' in t, '작업 후 갱신' in t)"` + 공용 스니펫 **[SEC]** / 미운영 시: 같은 명령의 첫 값이 `False` | 운영: 첫 값 `True` · [SEC] 통과 · Q5.8.4가 "쓰기 불가"면 둘째 값이 `False` / 미운영: 첫 값 `False`(섹션 자체가 없음). 어긋나면 **FAIL** |
+| 15 | **메타 레포 위치 마커** (S6.5) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');d=dict(l.split('=',1) for l in open(r'{공유리포}/.claude/dlc-meta-location.txt',encoding='utf-8').read().splitlines() if '=' in l and not l.startswith('#'));import os;print(d['META_REPO_PATH'], os.path.isdir(d['META_REPO_PATH']))"` + `git -C {공유리포} check-ignore .claude/dlc-meta-location.txt` | 경로가 실제 디렉토리(`True`) · check-ignore 종료코드 0(무시됨 — 추적되면 **FAIL**). 환경 제약으로 쓰지 못했으면 **`SKIPPED(degraded, 사유)`** (**FAIL 아님** — C FALLBACK. 다음 세션은 `CLAUDE.md` §0-2 폴백) |
+| 16 | **세션 자가점검 훅 설치 성사** (S8.7) | 채택한 **훅 명령을 실제로 실행**한 stdout + `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import json;json.load(open(r'{공유리포}/.claude/settings.local.json',encoding='utf-8'));print('valid json')"` + `git -C {공유리포} check-ignore .claude/settings.local.json .claude/orchestrator-selfcheck.txt` | stdout 첫 줄이 `[SELFCHECK {n}]`이고 무손상(항목 12 [ENC]로 재확인) · `valid json` · 기존 사용자 키 보존 · 두 개인 산출물 모두 무시됨 |
+
+**항목 5b 모드별 합격 기준** (유도 표는 *인터뷰가 채우는데* 합류는 인터뷰를 통째로 스킵한다 — 그 간극을 여기서 닫는다):
+
+| 모드 | 판정 대상 | 합격 기준 |
+|---|---|---|
+| **신규** | `.env.example` 전체 키 집합 | S8.5 (1) 유도 표 1~4가 허용한 것과 **정확히 일치**. 인터뷰에 없던 통합의 키가 하나라도 있으면 **FAIL** (쓰지 않는 벤더 키 혼입 — 실측된 결함) |
+| **합류** | **SETTER가 이번에 덧붙인 키만** | 합류는 인터뷰 응답이 없으므로 유도 표에서 **1(`WORKSPACE_ROOT`)만** 적용된다 → **`WORKSPACE_ROOT`가 존재하면 통과.** 원격에서 받은 나머지 키는 *팀이 인터뷰로 정한 산출물*이므로 **판정 대상이 아니다**(SETTER가 만들지 않은 것을 판정하지 않는다 — 합류 모드의 인스턴스 불가침과 같은 사상). 출력된 전체 키 목록은 **참고로 보고에 싣되 FAIL 근거로 쓰지 않는다** |
+| **보수** | — | 판정하지 않음 (`.env.example`을 손대지 않는다) |
 
 - 항목 16 보충 — 미성사이되 **환경 제약으로 설치 불가**면(S8.7 (5) 절차 완료 — 마커 기록 또는 세션 1회 한도 적용) **`SKIPPED(degraded, 사유)`** 로 보고한다. **FAIL 아님** — EX-15는 C FALLBACK이고 부트스트랩은 성공이다.
 - 항목 16 보충 — 설치 가능한 환경인데 절차 미이행·검증 누락으로 미성사면 **FAIL** (POLICY-VERIFY — 클레임만 하고 실측을 안 한 경우가 여기다).
@@ -717,6 +755,10 @@ python -c "import re,sys;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l i
 4. **권고 다음 단계**:
    - 각 레포에 대해 **REPO-SETTER 호출** (권장 순서: 의존 root 가까운 레포부터)
    - **(조건부, S9.5-a 수행 시)** 하네스 온보딩 **디스패치 패키지** — 이 패키지로 온보딩 서브를 호출할 것 (S9.5-b). 준비가 실패했으면 사유와 사람이 할 일을 여기 싣는다 (C FALLBACK — 부트스트랩은 이미 성공)
+   - **(조건부, 이미 부착된 하네스가 있을 때 — 특히 합류 모드)** **부착된 하네스 좌표 전달**: `{메타 레포}/ORCHESTRATOR.md`에 「부착된 하네스」 섹션이 있으면, 그 표의 **하네스명·대시보드 URL·비고(합류자가 할 일)** 를 한 줄씩 보고에 싣는다.
+     - **읽어서 전달할 뿐이다** — 사용자에게 묻지 않고, 새 값을 만들지 않고, 인스턴스를 고치지 않는다. 값은 clone으로 이미 로컬에 와 있다 (`specs/HARNESS-CATALOG.md` §4).
+     - **왜 필요한가**: 합류 완성은 *로컬 SETTER 합류 + 대시보드 등록* 2단인데(카탈로그 「합류자 경로」), 좌표를 보고하지 않으면 합류자는 2단째가 있는 줄도 모르고 세션을 끝낸다 — 티켓이 그 사람 이름으로 돌지 않는다.
+     - 섹션이 없으면 이 항목을 **생략한다**(빈 자리를 남기지 않는다). 토큰·시크릿 값은 싣지 않는다.
    - 모든 REPO-SETTER 완료 후 **ORCHESTRATOR-AGENT를 *운영 모드*로 전환**
 
 > SETTER는 분기 판단·수정 요청 처리를 *직접 하지 않는다*. 위 보고만 하고, 다음 분기는 오케스트레이터가 결정.
@@ -726,7 +768,7 @@ python -c "import re,sys;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l i
 > *무엇을 하는 자리인가*: S9.5는 카탈로그 행을 사람에게 *읽어주는* 자리가 **아니다.** 하네스 레포를 **직접 클론**하고, 그 레포가 소유한 **온보딩 룰북을 서브 에이전트에 실어 띄우고**, 결과를 회수해 인스턴스에 기록한다. 사용자는 `ai-dlc-orchestrator`를 클론해 **세션 하나만** 열면 되고, 별도 레포 클론·별도 CLI·별도 문서 추적을 하지 않는다 — 준비 전 과정이 한 세션 안에서 시작·완료된다.
 > *그래도 절차는 복제하지 않는다*: 프레임워크가 갖는 것은 **포인터**(레포 URL·온보딩 룰북 경로)와 **위임 계약**뿐이다. 설치 단계·config 스키마·트러블슈팅, 그리고 *설치를 대신할 수 없는 사용자 수동 작업*(런타임 설치·브라우저 로그인이 필요한 토큰 발급 등)의 안내까지 **그 룰북이 소유**한다. 하네스가 절차를 바꿔도 이 리포에는 PR이 필요 없다 (원칙 8 마찰 회피 / 원칙 6 단일 원천).
 > *왜 여기인가 (배치 근거)*: ① 하네스 온보딩은 **`dlc-meta` 공유 원격 URL이 확정·검증된 상태**를 입력으로 받는다 — 그 검증이 끝나는 곳이 S8.6(push)·S9(체크)다. ② S9 뒤라는 것은 **온보딩이 실패해도 코어 부트스트랩은 이미 성사**됐다는 뜻이다 — 실패가 부트스트랩으로 번지지 않게 격리된다 (EX-15와 같은 사상: **C FALLBACK**, 중단 금지).
-> *목록·포인터*: `{공유리포}/specs/HARNESS-CATALOG.md` (레포 URL·**온보딩 룰북 경로**·진입 방법·전제조건).
+> *목록·포인터*: `{공유리포}/specs/HARNESS-CATALOG.md` (레포 URL·**온보딩 룰북 경로**·전제조건 + *사람 경로* 진입 방법 — 마지막 칸은 에이전트 경로에 넘기지 않는다, §2 각주).
 
 **수행 주체 — 준비는 SETTER, 디스패치는 오케스트레이터** (원칙 7: 서브 호출은 오케스트레이터 단독 책임이고, SETTER 자신이 서브다). REPO-SETTER를 SETTER가 직접 부르지 않고 S9 보고 「권고 다음 단계」로 올리는 것과 **같은 방식**이다:
 
@@ -740,16 +782,21 @@ python -c "import re,sys;[print(p,i+1,l.strip()) for p in sys.argv[1:] for i,l i
 1. S5.9에서 하네스를 쓴다고 답했다 (합류·보수 모드는 인터뷰를 하지 않으므로 여기서 자동으로 끝난다 — **no-op**)
 2. **최초 판정**: `{메타 레포}/ORCHESTRATOR.md`에 그 하네스의 「부착된 하네스」 기록이 **없다**
 
+> ⚠️ **합류자에게 줄 대시보드 좌표는 본 절에 두지 않는다 (문서 통제 흐름상 도달 불가능하기 때문 — 실측된 결함).** 합류 모드는 §5 모드표가 S9.5를 통째로 스킵하고, 스킵하지 않더라도 위 발동 조건 1에서 끝난다 — **두 경로 모두 아래 본문에 닿지 않는다.** 따라서 좌표 전달 의무를 여기 적으면 *실행될 수 없는 의무*가 된다.
+> 그 의무의 자리는 **S9 보고 「권고 다음 단계」** 다 — 합류·신규·보수 어느 모드에서도 반드시 지나가는 지점이다. 명세는 S9 보고 4항 참조.
+> 이는 `specs/HARNESS-CATALOG.md` §4의 "합류자는 clone만으로 그 값을 손에 넣는다"와 **모순이 아니다**: 값은 이미 클론된 인스턴스 안에 있고(새 입력을 받지 않는다), S9 보고는 그 파일을 *읽어 한 줄로 올려줄* 뿐이다 — **없는 값을 만들어내거나 사용자에게 묻는 것이 아니라, 있는 값을 사용자가 찾아 헤매지 않게 하는 것**이다.
+
 **최초/합류 판정 (묻지 않는다)** — Q2.4가 *원격에 인스턴스가 있느냐*로 신규/합류를 가른 것과 **같은 방식**으로, *인스턴스에 그 하네스의 대시보드 좌표가 기록돼 있느냐*로 가른다. 판정 근거는 사람의 답이 아니라 **기록의 유무**다:
 
 | 인스턴스 기록 | 판정 | 행동 |
 |---|---|---|
-| **있음** | 팀에서 이미 돌고 있다 | **no-op** — 합류자는 로컬에서 할 일이 없다. 기록된 대시보드로 가서 자기 자격증명만 등록하면 된다(그 절차는 하네스 소유 — 카탈로그 「합류자 경로」). 보고에 대시보드 URL을 한 줄로 전달한다 |
+| **있음** | 팀에서 이미 돌고 있다 | **no-op** — 여기서는 아무 것도 하지 않는다. 합류자는 로컬에서 할 일이 없고, 기록된 대시보드로 가서 자기 자격증명만 등록하면 된다(그 절차는 하네스 소유 — 카탈로그 「합류자 경로」). **대시보드 URL 전달은 S9 보고가 담당한다** — 아래 ⚠️ 참조 |
 | **없음** | 아직 아무도 안 붙였다 → **최초 설치자** | 아래 S9.5-a 수행 |
 
 ##### S9.5-a. 준비 (SETTER)
 
-1. 카탈로그에서 선택된 행을 읽어 **레포 URL · 온보딩 룰북 경로 · 진입 방법 · 전제조건**을 얻는다.
+1. 카탈로그에서 선택된 행을 읽어 **레포 URL · 온보딩 룰북 경로 · 전제조건**을 얻는다.
+   > ⚠️ **「진입 방법」 칸은 읽지 않는다 — 그것은 *사람 경로* 전용이다** (`specs/HARNESS-CATALOG.md` §2 각주). 한 하네스의 진입점은 경로마다 다를 수 있고(대화형 마법사는 사람에게 정답이지만 헤드리스 에이전트에서는 EOF로 죽는다 — 실측), **에이전트 경로 진입점은 온보딩 룰북이 소유한다.** 룰북 경로를 넘기는 것으로 충분하다.
 2. **클론 — 사용자에게 시키지 않는다.** 위치 규약은 **`{Q2.2}/{하네스 레포명}`**, 즉 메타 레포 `{Q2.2}/{Q2.1}`의 **형제**다:
 
 ```bash
@@ -803,15 +850,16 @@ fi
 
 | # | 넘기는 것 |
 |---|---|
-| 1 | **온보딩 룰북 절대 경로** — *이 룰북이 절차의 단일 원천이다. 읽고 그대로 따르라* |
+| 1 | **온보딩 룰북 절대 경로** — *이 룰북이 절차의 단일 원천이다. 읽고 그대로 따르라.* **진입점도 이 룰북이 지정한다** (아래 ⚠️) |
 | 2 | **하네스 클론 절대 경로** (작업 디렉토리) |
-| 3 | 카탈로그 행의 **진입 방법** 한 줄 (룰북이 태우는 대상) |
-| 4 | **검증된 `dlc-meta` 공유 원격 URL** (Q2.4 — S8.6 push·S9 검증 완료). 하네스는 이 좌표로 시스템 인스턴스에 닿는다 |
-| 5 | 산출 **기록 좌표**: `{메타 레포}/ORCHESTRATOR.md` 「부착된 하네스」 — *어디에 남는지 알리되 쓰기는 서브가 하지 않는다* (S9.5-b) |
-| 6 | 준수 경계 — **토큰·시크릿 *값*은 반환·기록하지 않는다**(자격증명 경계) / 파일 생성은 **POLICY-ENCODING** / **사용자와 직접 통신하지 않는다**: 질문·확인·수동 작업 안내는 반환값으로 올리면 오케스트레이터가 단일 채널로 중계한다 |
-| 7 | **위임된 전제조건 항목** — 4-1 (가) 부류 항목의 *카탈로그 원문 그대로* + (나)에서 위임된 도달성 실측 요구("#4의 원격 URL이 **이 하네스가 실제로 실행되는 런타임 컨텍스트 안에서** 도달 가능한지 실측하라"). **판정 방법은 지정하지 않는다** — 룰북이 자기 수단으로 실측하고, 결과를 4-튜플 「정합성 체크」에 *근거와 함께* 싣게 한다. 하나라도 미충족이면 설치를 진행하지 말고 그 사실을 반환하라고 명시한다 |
+| 3 | **검증된 `dlc-meta` 공유 원격 URL** (Q2.4 — S8.6 push·S9 검증 완료). 하네스는 이 좌표로 시스템 인스턴스에 닿는다 |
+| 4 | 산출 **기록 좌표**: `{메타 레포}/ORCHESTRATOR.md` 「부착된 하네스」 — *어디에 남는지 알리되 쓰기는 서브가 하지 않는다* (S9.5-b) |
+| 5 | 준수 경계 — **토큰·시크릿 *값*은 반환·기록하지 않는다**(자격증명 경계) / 파일 생성은 **POLICY-ENCODING** / **사용자와 직접 통신하지 않는다**: 질문·확인·수동 작업 안내는 반환값으로 올리면 오케스트레이터가 단일 채널로 중계한다 |
+| 6 | **사람 게이트 규약** — 룰북이 *멈추고 사용자에게 물으라*고 한 지점(동의·승인·비가역 확인)에서 **서브는 스스로 승인하지 않는다.** 서브에게는 사용자 채널이 없으므로 **동의는 구조적으로 오케스트레이터를 거쳐야만 성립한다**: 질문을 반환값으로 올려 멈추고, 오케스트레이터가 사용자에게 받은 답을 되먹이면 이어서 진행한다. 게이트 통과를 보고할 때는 **누가 언제 무엇에 동의했는지**를 4-튜플 「정합성 체크」에 함께 싣는다 (`specs/VERIFICATION.md` §4.5) |
+| 7 | **위임된 전제조건 항목** — 4-1 (가) 부류 항목의 *카탈로그 원문 그대로* + (나)에서 위임된 도달성 실측 요구("#3의 원격 URL이 **이 하네스가 실제로 실행되는 런타임 컨텍스트 안에서** 도달 가능한지 실측하라"). **판정 방법은 지정하지 않는다** — 룰북이 자기 수단으로 실측하고, 결과를 4-튜플 「정합성 체크」에 *근거와 함께* 싣게 한다. 하나라도 미충족이면 설치를 진행하지 말고 그 사실을 반환하라고 명시한다 |
 
 > *넘기지 않는 것*: 인터뷰 응답 전량, 프레임워크 내부 룰북, 시크릿 값. **절차 설명도 넣지 않는다** — 룰북이 갖고 있다(넣으면 그 순간 두 원천이 갈라진다). **전제조건의 *판정 방법*도 넣지 않는다** (#7은 *무엇을 확인하라*이지 *어떻게 확인하라*가 아니다 — 방법은 하네스 지식이다).
+> ⚠️ **카탈로그 「진입 방법」도 넣지 않는다 (이전 판의 결함 — 그 자리가 #6 사람 게이트 규약으로 바뀌었다).** 그 칸은 *사람 경로* 진입점이고, 에이전트에게 금지된 명령일 수 있다(대화형 마법사 → 헤드리스 EOF 사망. 실측). 진입점은 **#1 룰북이 지정한다** — 그것이 두 경로를 각자 옳게 태우는 유일한 방법이고, 하네스가 진입점을 바꿔도 이 리포에 PR이 필요 없다.
 
 ##### S9.5-b. 디스패치·회수·기록 (오케스트레이터 — 책임 3·5·7)
 
@@ -820,8 +868,10 @@ fi
    - **위임된 전제조건(패키지 #7)의 실측 결과**도 같은 자리에 싣게 한다. 하나라도 미충족으로 회수되면 **기록하지 않고** S9.5-a 4-3의 3·4대로 보고한다 (C FALLBACK — 부트스트랩은 이미 성공).
    - **사용자에게 남는 수동 작업**(런타임 설치·브라우저 로그인이 필요한 토큰 발급 등)은 「**권고 다음 단계**」에 싣게 한다 — *그 안내문은 룰북이 만든다. 프레임워크가 쓰지 않는다.*
    - 서브가 사용자 입력을 필요로 하면 질문을 반환값으로 올리고, **오케스트레이터가 단일 채널로** 사용자에게 묻고 답을 되먹여 그 서브를 이어서 진행시킨다 (사용자는 오케스트레이터하고만 통신 — 시스템 메타 모델).
-2. **지상검증 (POLICY-VERIFY · 책임 5)** — 서브의 "설치 완료"는 *클레임이지 증거가 아니다.* 기록 전에 **산출된 대시보드 URL을 실제로 조회해 응답을 확인**한다(또는 룰북이 정의한 헬스 확인 수단으로 실측). 검증에 실패하면 **기록하지 않는다** — 틀린 좌표가 박히면 다음 사람이 *합류자*로 판정돼 존재하지 않는 대시보드로 간다.
-3. **기록·커밋·push (합류자를 위한 결정적 단계)** — `{메타 레포}/ORCHESTRATOR.md`의 **「부착된 하네스」 섹션**(템플릿 조건부 섹션 — S7에서 제거해 뒀다)을 추가하고 하네스명·대시보드 URL·부착 시점·합류자가 할 일을 기록한 뒤 `dlc-meta`에 **커밋·push**한다 (POLICY-TEMPLATE-ADHERENCE·POLICY-TRACKING, 쓰기는 POLICY-ENCODING, git 작업 전 **fetch/pull 선행**). **push 반영까지 확인**한다(`HEAD == @{u}`) — 로컬에만 남으면 합류자는 좌표를 못 받고 다음 사람이 다시 "최초"로 판정된다.
+2. **지상검증 (POLICY-VERIFY · 책임 5) — 두 가지를 *따로* 본다.**
+   - **ⓐ 결과**: 서브의 "설치 완료"는 *클레임이지 증거가 아니다.* 기록 전에 **산출된 대시보드 URL을 실제로 조회해 응답을 확인**한다(또는 룰북이 정의한 헬스 확인 수단으로 실측). 검증에 실패하면 **기록하지 않는다** — 틀린 좌표가 박히면 다음 사람이 *합류자*로 판정돼 존재하지 않는 대시보드로 간다.
+   - **ⓑ 사람 게이트의 동의 출처**: 룰북이 *멈추고 물으라*고 한 지점을 서브가 지났다면, **그 동의가 실제로 사용자에게서 왔는지**를 ⓐ와 **별개로** 확인한다 — 판정 절차는 `specs/VERIFICATION.md` **§4.5**(단일 원천). ⓐ가 통과해도 ⓑ가 불성립이면 게이트는 통과된 적이 없다: **설치가 됐다는 사실은 허락받았다는 사실을 증명하지 못한다**(실측된 실패 모드 — 서브가 사용자 채널이 없는데도 진행 쪽을 택해 자기 승인했다). 디스패치 시 패키지 #6으로 이 규약을 미리 명시해 서브가 추론하지 않게 한다.
+3. **기록·커밋·push (합류자를 위한 결정적 단계)** — `{메타 레포}/ORCHESTRATOR.md`의 **「부착된 하네스」 섹션**(템플릿 조건부 섹션 — S7에서 제거해 뒀다)을 추가하고 하네스명·대시보드 URL·부착 시점·합류자가 할 일을 기록한 뒤 `dlc-meta`에 **커밋·push**한다. **렌더 형태(「엔트리 형식:」 라벨·예시행을 남길지, 실제 엔트리를 어디에 쓸지)는 `templates/ORCHESTRATOR.template.md`의 해당 조건부 섹션 렌더 규칙이 정본이다 — 읽고 그대로 따른다(재량으로 정하지 않는다).** 이 커밋·push는 **S8.6의 첫 커밋 예외에 해당하지 않는다** — 원격에 이미 base가 있으므로 Q5.4 브랜치·MR 규약을 그대로 따른다 (POLICY-TEMPLATE-ADHERENCE·POLICY-TRACKING, 쓰기는 POLICY-ENCODING, git 작업 전 **fetch/pull 선행**). **push 반영까지 확인**한다(`HEAD == @{u}`) — 로컬에만 남으면 합류자는 좌표를 못 받고 다음 사람이 다시 "최초"로 판정된다.
    - **토큰·시크릿 값은 기록하지 않는다** (자격증명 경계 / POLICY-TRACKING).
    - 온보딩이 *이 세션 밖*(다른 클론·다른 사람·나중)에서 끝나면 **같은 자리에 기록하도록** 좌표(파일 경로·섹션명)를 명시해 전달한다.
 4. **사용자 보고** — 붙인 하네스·대시보드 URL·남은 수동 작업(있으면)을 한 줄로 전달한다.
