@@ -1,7 +1,9 @@
-# Machine-local / personal tooling config (absolute machine paths, local state)
-.claude/settings.local.json
+# Machine-local / personal tooling config (absolute machine paths, local state).
+# The settings.local.json* glob covers the live file plus SETTER's .bak (S8.7/S8.8
+# rollback source) and .corrupt (S8.8 (4) malformed-settings backup — contains the
+# user's permissions, so it MUST stay untracked; POLICY-TRACKING).
+.claude/settings.local.json*
 .claude/settings.json
-.claude/settings.local.json.bak
 
 # Session self-check injection text — generated per machine by SETTER S8.7 from
 # templates/SELF-CHECK.template.md (the tracked single source). PERSONAL artifact:

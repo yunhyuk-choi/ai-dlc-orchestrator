@@ -275,7 +275,7 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 > *목적*: 중대·반복 유실 절차(파일럿: 사이클 로깅)를 *모델의 자발적 준수*에서 *프로그램(훅) 강제*로 승격한다(POLICY-INVARIANT). S8.7이 정체성 재주입을 기계화했듯, 본 절은 절차 강제를 기계화한다.
 > *산출 위치·추적*: §11.2.1·§11.2.2 — team은 `dlc-meta`(추적), 엔진·훅·개인 yaml·마커는 개인(gitignore).
 >
-> **(0) 추적 제외 선결 확인** — `{공유리포}/.gitignore`(및 `dlc-meta/.gitignore`)가 개인 산출물을 모두 제외하는지 확인하고 빠졌으면 *배선 전에* 채운다: `.claude/settings.local.json`·`.bak`·`.claude/enforce.py`(엔진 사본)·`.claude/invariants-enforce.unavailable`·**`.claude/__pycache__/`(D4 — import 시 바이트코드 누출 방어)**·`invariants.personal.yaml`. (S8.7 (0)과 동일 규율.)
+> **(0) 추적 제외 선결 확인** — `{공유리포}/.gitignore`(및 `dlc-meta/.gitignore`)가 개인 산출물을 모두 제외하는지 확인하고 빠졌으면 *배선 전에* 채운다: `.claude/settings.local.json`·`.bak`·**`.corrupt`((4) 깨진-설정 백업 — 사용자 `permissions` 포함, 반드시 미추적; `settings.local.json*` 글롭 한 줄이 셋을 다 덮음)**·`.claude/enforce.py`(엔진 사본)·`.claude/invariants-enforce.unavailable`·**`.claude/__pycache__/`(D4 — import 시 바이트코드 누출 방어)**·`invariants.personal.yaml`. (S8.7 (0)과 동일 규율.)
 > **(D3) 공유 `.gitignore`는 추적 파일이다** — 실제로 줄을 *추가했다면* 그건 개인 산출물과 구분되는 **추적 변경**이므로 별도로 커밋한다(원칙 8 — 공유 변경은 git 단일 원천; `dlc-meta/.gitignore`는 S8.6 push 규율, `{공유리포}/.gitignore`는 팀 공유 레포 흐름). 프레임워크 배포 `.gitignore`에 이미 실려 있으면 no-op이라 커밋할 것이 없다(happy path·멱등). 라이브 정본: SETTER S8.8 (0).
 
 **(1) team 파일 렌더** (신규만) — 원본: `{공유리포}/templates/invariants.template.yaml` (POLICY-TEMPLATE-ADHERENCE).
