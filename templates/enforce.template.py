@@ -38,6 +38,27 @@ import os
 import sys
 
 # ---------------------------------------------------------------------------
+# stdout UTF-8 강제 (시작 시) — degraded-safe 계약의 일부.
+#   방출 메시지엔 한국어·em-dash(U+2014)가 들어간다. Windows 기본 stdout 인코딩은
+#   cp949라, 그대로 쓰면 `UnicodeEncodeError: 'cp949' codec can't encode '—'`로
+#   엔진이 *자기 출력으로* 크래시한다(실측). 엔진은 절대 크래시하지 않아야 하므로
+#   시작 시 stdout을 UTF-8로 재구성한다. reconfigure가 없는 런타임(3.6 이하)이면
+#   조용히 넘기고, 실제 쓰기는 _emit_write()가 버퍼 바이트 경로로 다시 보강한다.
+# ---------------------------------------------------------------------------
+try:
+    sys.stdout.reconfigure(encoding="utf-8")  # Py3.7+
+except Exception:
+    pass
+
+# stdin도 UTF-8로 강제한다 — 훅 하네스는 UTF-8 JSON을 흘리는데, cp949 호스트의
+# 기본 stdin은 cp949라 tool_input 등에 비-ASCII가 있으면 디코드가 어긋난다.
+# POSIX는 이미 UTF-8이라 무해한 no-op이다 (크로스플랫폼 무회귀).
+try:
+    sys.stdin.reconfigure(encoding="utf-8")  # Py3.7+
+except Exception:
+    pass
+
+# ---------------------------------------------------------------------------
 # tier 순서 (advisory < warn < block)
 # ---------------------------------------------------------------------------
 _TIER_ORDER = {"advisory": 0, "warn": 1, "block": 2}
@@ -462,6 +483,29 @@ def emit(event, findings):
     return None  # advisory → no-op
 
 
+def _emit_write(out):
+    """방출 JSON을 UTF-8로 견고하게 stdout에 쓴다 (degraded-safe).
+
+    reconfigure(시작 시)가 먹혔으면 텍스트 경로로도 안전하지만, reconfigure가
+    불가한 런타임을 대비해 *버퍼에 UTF-8 바이트를 직접* 쓰는 경로를 우선한다 —
+    이 경로는 로케일(cp949 등)과 무관하게 절대 UnicodeEncodeError를 내지 않는다.
+    버퍼가 없거나(재정의된 stdout 등) 실패하면 텍스트 경로로 폴백하되, 그마저
+    실패해도 조용히 삼킨다 — 엔진은 자기 출력으로 크래시하지 않는다."""
+    payload = json.dumps(out, ensure_ascii=False)
+    try:
+        buf = getattr(sys.stdout, "buffer", None)
+        if buf is not None:
+            buf.write(payload.encode("utf-8"))
+            buf.flush()
+            return
+    except Exception:
+        pass
+    try:
+        sys.stdout.write(payload)
+    except Exception:
+        pass
+
+
 # ===========================================================================
 # 8. 경로 해석 (STEP 2에서 SETTER가 env로 바인딩)
 # ===========================================================================
@@ -498,6 +542,9 @@ def main(argv=None):
     except Exception:
         raw = ""
     data = {}
+    # 선행 BOM(U+FEFF)을 제거한다 — 일부 셸·하네스가 UTF-8 BOM을 앞에 붙여 흘리면
+    # json.loads가 실패한다. degraded-safe: 어긋나도 data={}로 조용히 진행.
+    raw = raw.lstrip("\ufeff")
     if raw.strip():
         try:
             data = json.loads(raw)
@@ -512,7 +559,7 @@ def main(argv=None):
     except Exception:
         out = None  # 무엇이 어긋나도 조용히 통과 (EX-15 / C FALLBACK)
     if out is not None:
-        sys.stdout.write(json.dumps(out, ensure_ascii=False))
+        _emit_write(out)  # UTF-8 견고 쓰기 (reconfigure 불가 런타임도 버퍼 바이트로 안전)
     return 0
 
 
