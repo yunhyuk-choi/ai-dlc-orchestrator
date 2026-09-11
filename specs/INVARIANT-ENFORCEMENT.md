@@ -198,6 +198,7 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 인터뷰 답을 아래대로 템플릿에 합성한다:
 
 1. **team 파일 렌더** — 켠 integrity 불변식(③)을 `invariants.template.yaml`에서 골라 **`invariants.team.yaml`**(git 추적, `dlc-meta`의 `cycles/` 옆)로 렌더하고 각자의 tier를 박는다. `cycle-must-log`는 기본 warn. (POLICY-TEMPLATE-ADHERENCE — 손수 자유 작성 금지.)
+   - **결정적 렌더(D2 — 라이브 정본: SETTER S8.8 (1) 레시피)**: *같은 인터뷰 답(③⑥②) + 같은 템플릿 버전 → 바이트 동일 team.yaml*이어야 한다. "SLOT을 비운다"·헤더 처리를 추측으로 메우면 런마다 산출이 갈려 POLICY-TEMPLATE-ADHERENCE를 어긴다. 규칙(요약): ⓐ 템플릿을 그대로 복사 → ⓑ 스키마-닥 헤더를 **고정 provenance 헤더**로 교체(`INVARIANTS-CONTRACT` 값은 템플릿에서 복사·하드코딩 금지, 예시 본문은 버림 — 정본은 템플릿) → ⓒ 끈 불변식 블록은 통째 삭제, 켠 것은 `tier`·`match`만 치환 → ⓓ **"SLOT을 비운다" = `# <SLOT…>`부터 `# <END SLOT…>`까지 마커 포함 전삭제**(트래커=예면 실제 불변식으로 치환) → ⓔ 말미 LF 하나. 전체 레시피·고정 헤더 텍스트는 SETTER S8.8 (1)이 정본.
 2. **트래커 결합 불변식(SLOT)** — ②가 예면 `<SLOT>…<END SLOT>` 자리에 트래커 결합 불변식을 짜 넣고 `requires: [local-log-layer, issue-tracker-config]`를 준다(체크·선결 조건은 어댑터가 제공 — `specs/ISSUE-TRACKER-ADAPTER.md`). ②가 아니오면 **SLOT을 비운다**(중립). *새 선결 조건 `issue-tracker-config`·새 체크 id는 엔진 `CHECKS`·`_precondition_met` 확장이며, 로컬 원천만 읽는 한 중립 유지.*
 3. **엔진 배치** — `enforce.template.py`를 인스턴스 실행 경로에 **`enforce.py`**로 사본 배치(개인·gitignore).
 4. **경로 바인딩** — 훅 command의 env로 `AIDLC_INVARIANTS_DIR`(team·personal yaml이 있는 디렉토리)·`AIDLC_LOG_DIR`(메타 레포 루트 = `cycles/`의 부모)를 실제 절대경로로 바인딩한다.
@@ -274,7 +275,8 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 > *목적*: 중대·반복 유실 절차(파일럿: 사이클 로깅)를 *모델의 자발적 준수*에서 *프로그램(훅) 강제*로 승격한다(POLICY-INVARIANT). S8.7이 정체성 재주입을 기계화했듯, 본 절은 절차 강제를 기계화한다.
 > *산출 위치·추적*: §11.2.1·§11.2.2 — team은 `dlc-meta`(추적), 엔진·훅·개인 yaml·마커는 개인(gitignore).
 >
-> **(0) 추적 제외 선결 확인** — `{공유리포}/.gitignore`(및 `dlc-meta/.gitignore`)가 개인 산출물을 모두 제외하는지 확인하고 빠졌으면 *배선 전에* 채운다: `.claude/settings.local.json`·`.bak`·`.claude/*enforce*.py`(엔진 사본)·`.claude/*.unavailable`·`invariants.personal.yaml`. (S8.7 (0)과 동일 규율.)
+> **(0) 추적 제외 선결 확인** — `{공유리포}/.gitignore`(및 `dlc-meta/.gitignore`)가 개인 산출물을 모두 제외하는지 확인하고 빠졌으면 *배선 전에* 채운다: `.claude/settings.local.json`·`.bak`·`.claude/enforce.py`(엔진 사본)·`.claude/invariants-enforce.unavailable`·**`.claude/__pycache__/`(D4 — import 시 바이트코드 누출 방어)**·`invariants.personal.yaml`. (S8.7 (0)과 동일 규율.)
+> **(D3) 공유 `.gitignore`는 추적 파일이다** — 실제로 줄을 *추가했다면* 그건 개인 산출물과 구분되는 **추적 변경**이므로 별도로 커밋한다(원칙 8 — 공유 변경은 git 단일 원천; `dlc-meta/.gitignore`는 S8.6 push 규율, `{공유리포}/.gitignore`는 팀 공유 레포 흐름). 프레임워크 배포 `.gitignore`에 이미 실려 있으면 no-op이라 커밋할 것이 없다(happy path·멱등). 라이브 정본: SETTER S8.8 (0).
 
 **(1) team 파일 렌더** (신규만) — 원본: `{공유리포}/templates/invariants.template.yaml` (POLICY-TEMPLATE-ADHERENCE).
 - 산출: `{메타 레포}/invariants.team.yaml`(추적). 인터뷰 ③이 켠 불변식만 남기고 각 tier를 확정(`cycle-must-log` 기본 warn).
@@ -295,15 +297,18 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 
 **(4) 설정 병합** — `{공유리포}/.claude/settings.local.json`에 `PostToolUse`·`Stop` 훅을 **병합**(덮어쓰기 금지·기존 키 보존·`.bak` 백업). 각 훅 command에 (3) 명령 + env `AIDLC_INVARIANTS_DIR`·`AIDLC_LOG_DIR`(절대경로) 바인딩. PostToolUse는 ⑥ 도구명 집합을 `match`(및 지원 시 훅 `matcher`)에 반영. **중복 누적 금지**(같은 enforce.py를 가리키는 항목이 있으면 교체 — 보수 멱등성).
 
-**(5) 설치 검증 (POLICY-VERIFY — 필수)** — 클레임이 아니라 실측:
-- (3) 명령을 **실제로 실행**해 방출을 본다. warn 유발 픽스처(열린 사이클 등)로 warn JSON이 나오는지, 무발견에서 빈 출력·exit 0인지 확인(TASK 1에서 이미 실증한 형태).
-- `settings.local.json`이 유효 JSON이고 기존 사용자 키 보존.
+**(5) 합성 후 자가검증 게이트 (POLICY-VERIFY — 필수. 통과 전 성공 보고 금지 — failover 1)** — 클레임이 아니라 실측. 라이브 정본: SETTER S8.8 (5).
+- **1차 단언 = POSITIVE 픽스처(D1)**: 렌더+매치+env 로드를 증명하는 유일한 런은 warn을 *유발*하는 실행뿐이다. `--event PostToolUse` + `AIDLC_INVARIANTS_DIR`=실제 `{메타 레포}` + `AIDLC_LOG_DIR`=*빈* `cycles/`를 담은 임시 디렉토리 + ⑥ `match`가 걸리는 stdin으로 (3) 명령을 **직접 서브프로세스로** 돌려 **warn JSON 방출(비어있지 않음, exit 0)**을 확인한다. **빈 출력이면 FAIL** — degraded-safe 엔진은 *망가진 렌더(불변식 0개)에서도 빈 출력·exit 0*을 내므로 "무발견 런"만으로는 성공을 반증할 수 없다(D1 거짓통과). 2차로 Stop+빈 cycles(빈 출력) 및 PostToolUse+열린 cycle(빈 출력 = 판별) 확인.
+- `settings.local.json`이 유효 JSON이고 기존 `UserPromptSubmit`·`permissions` 보존.
 - `{공유리포}`·`{메타 레포}`에서 개인 산출물이 추적되지 않는지(gitignore 정상), team yaml은 추적되는지 확인.
-- **block tier를 켰다면 라이브 파이어로 차단을 실측**(§11.4) — 미검증 시 `INVARIANTS-CONTRACT` 정정 대비.
+- **block tier를 켰다면 라이브 파이어로 차단을 실측**(§11.4) — 확정 파이어는 새 세션 몫이라 게이트 PASS 조건은 아니다(게이트 1차 단언은 POSITIVE warn 방출). 미검증 시 `INVARIANTS-CONTRACT` 정정 대비.
+- **게이트 실패 시**: team·personal·엔진 파일은 그대로 두고, (4)에서 병합한 라이브 훅을 `.bak`에서 롤백해 *망가진 라이브 훅을 남기지 않으며*, (6) degraded로 내려간다(EX-15 — 중단 아님).
 
 **(6) 설치 불가 확정 — degraded (EX-15 / C FALLBACK)** — S8.7 (5)와 동일 사상:
-- **중단하지 않는다**(ABORT·PAUSE 격상 금지). team·personal·엔진 배치는 마치고 훅만 스킵.
+- **중단하지 않는다**(ABORT·PAUSE 격상 금지). 가능한 산출물은 마치고 훅만 스킵.
 - `{공유리포}/.claude/*enforce*.unavailable`(개인·gitignore)에 실패 층위·시도 명령·에러 요지를 남긴다 → 이후 재시도 폭주 억제. degraded는 어느 OS든 공통.
+- **degrade 경로는 이름 있는 결과로 착지한다(failover 4)** — 훅-불가 / no-python / dlc-meta 쓰기불가 / 템플릿 누락 / (5) 게이트 실패. 각 경로마다 *무엇이 여전히 쓰였는지* + 마커 층위 + 시끄러운 보고를 남긴다(조용한 반쪽 세팅 금지). 경로별 표는 SETTER S8.8 (6)이 정본.
+- **멱등(failover 2·3)**: 훅 항목은 append 아닌 교체, 개인 yaml은 seed-if-absent(사용자 편집 보존), settings.local.json이 깨졌으면 파괴 않고 `.corrupt`로 보존+보고+degraded. 라이브 정본은 SETTER S8.8 (2)·(4).
 - T3(사용자 명시 호출)은 마커를 무시하고 재시도, 성공 시 마커 삭제(멱등).
 
 ---
@@ -317,6 +322,8 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 STEP 2(SETTER 조립·훅 배선·라이브 계약 검증·트래커 결합 슬롯 채움)의 *실행*(SETTER.md 재배선·settings.json·CLAUDE.md 수정)은 본 변경에 포함되지 않는다 (§9).
 
 STEP-2 보강(설계 프로즈 — SETTER.md 무수정): §11(인터뷰 6문항 + 합성 행동가이드 + OS 적응 훅 규칙 + 추적 분리)·§12(SETTER **S8.8** 초안, S8.7 미러) 추가. `enforce.template.py`는 stdout·stdin UTF-8 강제 + 선행 BOM 관용으로 보강돼 cp949 콘솔에서도 자기 출력으로 크래시하지 않음이 실증됨(warn 형태·degraded 경로 확인). 훅은 python 직접 호출로 OS 중립(PowerShell 전용 금지).
+
+STEP-2b(드라이런 결함 수정 + 안정성/failover 하드닝): 신규 사용자 여정 드라이런이 S8.8에서 낸 결함 4종을 수정하고, 합성이 *재현가능·멱등·자가검증·fail-safe* 하도록 보강했다. **D1**(검증 거짓통과 — degraded-safe 엔진의 망가진 렌더→빈 출력이 정상 무발견과 구분 불가): S9 항목 17·S8.8 (5)의 1차 단언을 **POSITIVE 픽스처**(PostToolUse + 빈 cycles + ⑥ 매치 → warn 방출)로 바꿔 렌더+매치+env 로드를 반증가능하게 만듦(빈 출력=FAIL). Stop-빈·열린-cycle은 2차. **D2**(렌더 알고리즘 부재 → 런마다 발산): S8.8 (1)에 결정적 렌더 레시피 고정(고정 provenance 헤더·`INVARIANTS-CONTRACT`는 템플릿에서 복사·끈 블록 전삭제·`tier`/`match`만 치환·"SLOT을 비운다"=마커 포함 전삭제·말미 LF 하나 → 같은 답=바이트 동일). **D3**(공유 `.gitignore` 커밋 미배정): 추가 줄은 추적 변경이므로 개인 산출물과 구분해 커밋(원칙 8) — 프레임워크 배포 `.gitignore`에 미리 실어 happy path는 no-op. **D4**: `.claude/__pycache__/` 제외 추가. **Failover**: (1) 합성 후 자가검증 **게이트** — P 통과 전 성공 보고 금지, 실패 시 라이브 훅 `.bak` 롤백 + degraded; (2) 멱등 — 훅 교체(append 금지)·개인 yaml seed-if-absent·엔진 사본 덮어쓰기 안전; (3) 훅-병합 안전 — 깨진 settings.local.json은 `.corrupt` 보존·보고·degraded, `UserPromptSubmit`/`permissions` 항상 보존; (4) degrade 경로 열거(훅-불가/no-python/dlc-meta 쓰기불가/템플릿 누락/게이트 실패 → 각기 이름 있는 결과·마커·보고). 엔진(`enforce.template.py`)은 무수정 — 컴포넌트 체크(block=exit2·Stop-guard 강등·degraded no-op·POSITIVE warn·판별 negative) 재실행 전부 green.
 
 STEP-2a(실제 배선): (1) **훅 계약 확정** — 공식 문서(`code.claude.com/docs/en/hooks.md`, v2.1.2xx, 2026-09-11 fetch) 대조로 §11.4를 확정. warn 형태 정합, **block은 exit code 2가 신뢰 가능한 차단 채널**(exit 0 + decision:block은 자문에 그칠 수 있음, 특히 PostToolUse 사후 실행), block은 Stop·PreToolUse에서 실효(PostToolUse는 warn 유지), **Stop-block 무한루프는 `stop_hook_active`로 가드**. (2) **엔진 반영** — `enforce.template.py` `emit()`/`main()`이 block tier → JSON + exit 2, Stop 재진입 시 block→warn 강등을 구현(서브프로세스 단위 검증: block→exit2+JSON / warn→exit0+JSON / 무발견·degraded→exit0+빈출력 / Stop+stop_hook_active→강등, 전부 통과). (3) **S8.8 이식** — §12 초안을 `agents/SETTER.md`에 라이브 절 S8.8로 이식(S8.7 (0)~(6) 미러, team=신규만·엔진/훅/개인=신규·합류·보수, 두 yaml co-locate §11.2.1, python 직접 호출 훅, S9 항목 17·파일트리·참조표 갱신). 잔여: block tier 라이브 파이어(새 세션/오케스트레이터).
 

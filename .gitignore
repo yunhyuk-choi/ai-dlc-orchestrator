@@ -18,6 +18,15 @@
 # Suppresses repair-loop retries. PERSONAL and machine-specific by definition.
 .claude/orchestrator-selfcheck.unavailable
 
+# Invariant-enforcement personal artifacts — generated per machine by SETTER S8.8
+# from templates/enforce.template.py (the tracked single source). PERSONAL:
+# regenerated locally, never shared (POLICY-TRACKING). Shipping these here means
+# the S8.8 (0) precheck finds nothing missing on the happy path (no dirty tracked
+# change to commit). See specs/INVARIANT-ENFORCEMENT.md §11.2.2.
+.claude/enforce.py
+.claude/invariants-enforce.unavailable
+.claude/__pycache__/
+
 # Node tooling noise
 node_modules/
 

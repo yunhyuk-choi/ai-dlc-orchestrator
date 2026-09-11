@@ -667,9 +667,10 @@ S5(Q5.3~Q5.6)에서 *이 시스템의* 커밋·브랜치·MR 규약을 수집해
 > *모드 규칙*: team yaml은 *공유 인스턴스*라 **신규**만 생성하고 **합류**는 clone으로 받는다(재생성 금지 — 팀원 것 덮어쓰기 방지). 엔진 사본·훅·개인 yaml·`.unavailable`은 머신 로컬이라 **신규·합류·보수 모두 수행**한다 (선례: S8.7이 개인 훅 산출물을 세 모드 모두에서 설치).
 >
 > **(0) 추적 제외 선결 확인** (S8.7 (0)과 동일 규율) — 배선 전에 아래를 확인하고 빠졌으면 채운다:
-> - `{공유리포}/.gitignore` — `.claude/settings.local.json`·`.bak`은 S8.7이 이미 보장. 추가로 `.claude/enforce.py`(엔진 사본)·`.claude/invariants-enforce.unavailable`(마커).
+> - `{공유리포}/.gitignore` — `.claude/settings.local.json`·`.bak`은 S8.7이 이미 보장. 추가로 **`.claude/enforce.py`**(엔진 사본)·**`.claude/invariants-enforce.unavailable`**(마커)·**`.claude/__pycache__/`**(D4 — 스크립트 모드 happy path에선 바이트코드를 안 쓰지만, 무엇이든 `enforce`를 *import*하면 새어 추적된다. 방어적으로 항상 제외). 프레임워크 레포가 배포하는 `.gitignore`에 이 셋이 이미 실려 있으면(권장·기본) 이 확인은 no-op이고 **커밋할 것이 없다**(happy path).
 > - `dlc-meta/.gitignore` — `invariants.personal.yaml`(+`invariants.personal.yaml.bak`). **team yaml(`invariants.team.yaml`)은 절대 제외하지 않는다**(공유 추적 대상).
 > - 하나라도 빠지면 개인 산출물이 추적돼 팀원 머신 값이 서로 덮어쓰인다.
+> - **(D3) 공유 `.gitignore`는 *추적* 파일이다 — 개인 산출물과 커밋 규율이 다르다.** 위에서 `{공유리포}/.gitignore`·`dlc-meta/.gitignore`에 *실제로 줄을 추가했다면* 그건 **추적 변경**이므로 그대로 두면 dangling dirty 상태가 된다. 개인(gitignore) 산출물(`enforce.py`·개인 yaml·설정·마커)과 **명시적으로 구분해**, 추가한 `.gitignore` 변경만 별도로 스테이징·커밋한다(원칙 8 — 공유 변경은 git 단일 원천). `dlc-meta/.gitignore`는 S8.6 커밋·push 규율(fetch 선행)을 재사용해 커밋·push하고, `{공유리포}/.gitignore`는 그 팀의 공유 레포 변경 흐름(원칙 8 — PR/머지)을 따른다. **아무것도 추가하지 않았으면(기본 배포에 이미 있으면) 커밋 단계는 건너뛴다** — 멱등: 재실행이 새 dirty를 만들지 않는다.
 
 **인터뷰/탐지 (§11.1 — 묻기보다 탐지 우선, 앞 단계 답 재사용 — 중복 질문 금지)**
 
@@ -685,15 +686,39 @@ S5(Q5.3~Q5.6)에서 *이 시스템의* 커밋·브랜치·MR 규약을 수집해
 **(1) team 파일 렌더** (신규만) — 원본: `{공유리포}/templates/invariants.template.yaml` (POLICY-TEMPLATE-ADHERENCE — 손수 작성 금지).
 
 - 산출: `{메타 레포}/invariants.team.yaml`(추적). 인터뷰 ③이 켠 불변식만 남기고 각 tier 확정(`cycle-must-log` 기본 warn). PostToolUse `match`에 ⑥ 도구명 반영(모르면 템플릿 예시 placeholder 유지).
-- ②(트래커 운영)면 `<SLOT: project-adaptive invariants>…<END SLOT>` 자리에 트래커 결합 불변식을 짜 넣고 `requires: [local-log-layer, issue-tracker-config]`(새 체크·선결 조건은 어댑터가 제공 — `specs/ISSUE-TRACKER-ADAPTER.md`, 로컬 원천만 읽는 한 중립 유지). 아니면 **SLOT을 비운다**(중립).
+
+> **(D2) 결정적 렌더 레시피 — 같은 인터뷰 답(③⑥②) + 같은 템플릿 버전 → *바이트 동일* team.yaml.** "SLOT을 비운다"·"헤더를 어쩐다"를 추측으로 메우면 런마다 산출이 달라져 POLICY-TEMPLATE-ADHERENCE("손수 작성 금지")를 어긴다. 아래는 *템플릿 텍스트에 대한 순수 변환*이다(새로 작문하지 않는다 — 지정 줄만 삭제·치환):
+>
+> a. **복사** — `invariants.template.yaml`을 그대로 작업 텍스트로 삼는다.
+> b. **헤더 교체(고정)** — 파일 맨 위부터 `invariants:` 직전까지의 스키마-닥 주석 블록 *전체*를 삭제하고, 그 자리에 아래 **고정 provenance 헤더**를 넣는다. 예시 본문(긴 스키마 설명)은 버린다 — 그 정본은 템플릿에 남아 있다(단일 원천). `INVARIANTS-CONTRACT` 값은 **템플릿의 `INVARIANTS-CONTRACT:` 줄에서 복사**한다(현재 `v1` — 하드코딩 금지, 템플릿이 올리면 따라 오른다):
+>
+> ```yaml
+> # invariants.team.yaml — 팀 무결성 불변식 (SETTER S8.8 렌더 산출물 · git 추적 · 공유)
+> # 원본 템플릿: ai-dlc-orchestrator/templates/invariants.template.yaml (스키마·병합·tier·체크 id 정본)
+> # 규율: specs/INVARIANT-ENFORCEMENT.md (POLICY-INVARIANT) · 엔진: {공유리포}/.claude/enforce.py
+> # INVARIANTS-CONTRACT: v1   ← 템플릿의 계약 값을 그대로 복사
+> # 손수 편집하지 말고 SETTER S8.8 재실행으로 재생성한다 (POLICY-TEMPLATE-ADHERENCE).
+> # 개인 재조정은 invariants.personal.yaml (gitignore) 에 둔다 — 팀이 floor, 약화 불가.
+> ```
+>
+> c. **불변식별(③)** — `invariants:` 아래 각 최상위 불변식 블록(선행 `#` 주석 줄들 + `- id:` 매핑)에 대해:
+>    - **끈 것** → 블록 전체 삭제(그 선행 주석 줄부터 다음 블록/SLOT/EOF 직전까지).
+>    - **켠 것** → 그대로 두되 **두 값만** 바꾼다: `tier:` 스칼라를 ③ 값으로, 각 PostToolUse 바인딩의 `match:` 인라인 리스트를 ⑥ 도구명 집합(YAML flow 리스트)으로 치환. `personal-adjust`·`scope`·`requires`·`check`·`event`·`bindings` 구조는 템플릿 그대로 둔다. (⑥를 모르면 `match`는 템플릿 예시 placeholder를 유지하고 tier를 advisory로 낮춘다 — 인터뷰 ⑥ 규칙.)
+> d. **SLOT(②)** —
+>    - **트래커=아니오** → `# <SLOT: project-adaptive invariants>` 줄부터 `# <END SLOT: project-adaptive invariants>` 줄까지 **포함해 전부 삭제**한다. *이것이 "SLOT을 비운다"의 구체적 의미다* — 주석 골격을 남기지 않는다.
+>    - **트래커=예** → 같은 마커-투-마커 블록(포함)을, 주석 예시를 실제 YAML 리스트 항목으로 푼(uncomment) 트래커 결합 불변식으로 치환한다(`check`·`requires: [local-log-layer, issue-tracker-config]`는 어댑터가 제공 — `specs/ISSUE-TRACKER-ADAPTER.md`). 마커 줄 자체는 남기지 않는다.
+> e. **말미 정규화** — 파일 끝에 LF 정확히 하나. 그 외 재정렬·재들여쓰기 없음.
+> f. **결정성 근거** — 템플릿이 계약 버전으로 고정돼 있고 b~e가 (③,⑥,②)의 순수 함수이므로, 같은 답이면 두 SETTER 런이 바이트 동일 파일을 낸다. 의심되면 재렌더본과 `diff`하고 항목 12 [ENC]로 인코딩을 재확인한다.
+
+- ②(트래커 운영)면 `<SLOT: project-adaptive invariants>…<END SLOT>` 자리에 트래커 결합 불변식을 짜 넣고 `requires: [local-log-layer, issue-tracker-config]`(새 체크·선결 조건은 어댑터가 제공 — `specs/ISSUE-TRACKER-ADAPTER.md`, 로컬 원천만 읽는 한 중립 유지). 아니면 **SLOT을 비운다**(위 레시피 d — 마커 포함 전삭제).
 - **POLICY-ENCODING 필수**: UTF-8(BOM 없음)·LF 직접 쓰기.
 - **커밋·push** (신규만 — 공유 인스턴스 규율, POLICY-TRACKING): `invariants.team.yaml`은 S8.6(공유 인스턴스 커밋·push)이 *끝난 뒤* 렌더되므로, **S8.6 커밋에 실리지 않는다.** 따라서 이 파일만 별도로 스테이징·커밋·push한다 (`git -C {메타 레포} add invariants.team.yaml && git commit && git push` — S8.6의 fetch 선행·검증 규율 재사용). push까지 성사돼야 합류자가 clone으로 받는다. (개인 yaml은 gitignore라 제외됨 — (5)에서 검증.)
 - *합류*는 이 파일을 clone으로 받는다 — **재생성 금지**(팀원 것 덮어쓰기 방지).
 
-**(2) 엔진 사본 + 개인 yaml 시드** (신규·합류·보수) —
+**(2) 엔진 사본 + 개인 yaml 시드** (신규·합류·보수) — **멱등(failover 2)**: 아래 둘은 재실행에 안전해야 한다.
 
-- `{공유리포}/templates/enforce.template.py` → `{공유리포}/.claude/enforce.py`(개인·gitignore) 사본 배치.
-- 빈 `{메타 레포}/invariants.personal.yaml`(개인·gitignore, ④ 무관하게) 시드 — 스키마 주석 한 줄을 담은 빈 스타터. team yaml과 **같은 디렉토리(`dlc-meta` = `AIDLC_INVARIANTS_DIR`)** 여야 엔진이 병합한다(§11.2.1). 형식(POLICY-ENCODING — UTF-8 no-BOM·LF):
+- `{공유리포}/templates/enforce.template.py` → `{공유리포}/.claude/enforce.py`(개인·gitignore) 사본 배치. **엔진 사본은 템플릿의 무편집 사본이므로 매번 덮어써도 안전**하다(사용자 편집분이 없다). 오히려 재실행이 낡은 사본을 최신 템플릿으로 *갱신*하는 것이 바람직하다.
+- **개인 yaml은 *있으면 건드리지 않는다*(seed-if-absent)** — `{메타 레포}/invariants.personal.yaml`이 이미 있으면 사용자가 편집했을 수 있으므로 **덮어쓰지 않는다**(재실행이 개인 강화를 날리면 안 됨). *없을 때만* 아래 빈 스타터를 시드한다(개인·gitignore, ④ 무관하게 — 스키마 주석 한 줄). team yaml과 **같은 디렉토리(`dlc-meta` = `AIDLC_INVARIANTS_DIR`)** 여야 엔진이 병합한다(§11.2.1). 형식(POLICY-ENCODING — UTF-8 no-BOM·LF):
 
 ```yaml
 # 개인 편의(ergonomics) 불변식을 여기 추가한다 — gitignore, 팀 공유 안 함.
@@ -716,7 +741,9 @@ invariants: []
 - **병합이지 덮어쓰기가 아니다.** 기존 `permissions` 등 사용자 키와 **S8.7의 `UserPromptSubmit` SELF-CHECK 훅**을 반드시 보존한다. `hooks.PostToolUse`·`hooks.Stop`만 추가·교체한다.
 - 각 훅 command에 (3) 명령 + env `AIDLC_INVARIANTS_DIR`(= `dlc-meta`, 두 yaml 위치)·`AIDLC_LOG_DIR`(= 메타 레포 루트 = `cycles/`의 부모, 곧 `dlc-meta`)를 **절대경로**로 바인딩.
 - PostToolUse는 ⑥ 도구명 집합을 엔진 `match`(team yaml에 이미 반영)에 더해, 하네스가 훅 레벨 `matcher`를 지원하면 그쪽에도 반영해 불필요한 엔진 기동을 줄인다(선택).
-- **중복 누적 금지** — 이미 같은 `enforce.py`를 가리키는 항목이 있으면 *교체*한다(보수 멱등성). 쓰기 전 원본을 `settings.local.json.bak`으로 백업한다.
+- **중복 누적 금지(멱등 — failover 2)** — 이미 같은 `enforce.py`를 가리키는 `PostToolUse`/`Stop` 항목이 있으면 *append하지 말고 교체*한다. 재실행이 훅 항목을 중복 누적시키면 안 된다.
+- **`.bak` 형식화(멱등의 안전망)** — 쓰기 *전에* 원본을 `settings.local.json.bak`으로 백업한다. 이 백업은 (5) 게이트가 실패할 때 라이브 훅을 되돌리는 롤백 원천이기도 하다((6) 참조). `.bak`은 이미 S8.7이 만드는 개인·gitignore 산출물이다 — 매 실행이 최신 원본으로 갱신한다.
+- **(failover 3) 병합 안전 — settings.local.json이 깨졌거나 못 읽으면 파괴하지 않는다.** 파일이 있는데 유효 JSON이 아니거나 읽기 불가면: (i) 원본을 **`settings.local.json.corrupt`로 별도 보존**하고(정상 `.bak`을 덮어써 좋은 상태를 잃지 않게), (ii) 사람이 읽을 수 있게 **오케스트레이터에 시끄럽게 보고**하고, (iii) 훅 배선은 **(6) degraded로 내려** `.unavailable` 마커를 남긴다 — *깨진 파일을 재작성하거나 통째로 덮어쓰지 않는다*(사용자 `permissions`·`UserPromptSubmit`이 그 안에 있을 수 있다). **`UserPromptSubmit`(S8.7)과 `permissions`는 어떤 경로에서도 보존**한다 — 병합이 그 둘을 지우는 결과가 나오면 그 자체를 실패로 간주하고 (6)로 내린다.
 
 ```json
 {
@@ -737,18 +764,49 @@ invariants: []
 
 > 위는 **병합해 넣을 조각**이다 — 기존 `UserPromptSubmit`(S8.7)과 사용자 키를 지우지 않는다. 하네스가 훅 항목에 `env`를 지원하지 않으면 실행자 앞에 OS별 인라인 env 지정으로 바인딩하고, 무엇을 썼는지 (5)에 보고한다.
 
-**(5) 설치 검증 (POLICY-VERIFY — 필수. 통과 못 하면 실패 보고)** — 설치했다는 *클레임*이 아니라 실측:
+**(5) 합성 후 자가검증 게이트 (POLICY-VERIFY — 필수. 통과 못 하면 (6) degraded로 내리고 성공 보고 금지)** — 설치했다는 *클레임*이 아니라 실측이다. **이 게이트가 통과하기 전에는 S8.8을 성공으로 보고하지 않는다(failover 1).**
 
-- (3)의 명령을 **실제로 실행**해 방출을 본다 — 열린 사이클 픽스처로 warn JSON이 나오는지, 무발견에서 빈 출력·exit 0인지 확인(TASK 1에서 이미 실증한 형태 — `{"systemMessage":…}` / no-op).
-- `settings.local.json`이 **유효 JSON**이고 기존 `UserPromptSubmit`·사용자 키가 보존됐는가.
+> **(D1) 왜 POSITIVE 픽스처가 1차 단언인가 — 엔진은 degraded-safe다.** 렌더가 망가지면(잘못된 yaml → 불변식 0개) 엔진은 findings 0개 → **exit 0 + 빈 출력**으로 나가는데, 이는 *정상 무발견 런과 바이트 동일*이다. 따라서 "무발견에서 빈 출력·exit 0"만 보는 종전 판정은 **망가진 렌더에서도 통과**한다 — 합성의 성공 기준이 반증 불가능이었다(실측된 결함). **렌더+매치+env 로드가 실제로 됐음을 증명하는 유일한 런은 warn을 *유발*하는 POSITIVE 픽스처뿐이다.** 이를 1차 단언으로 삼는다.
+>
+> 게이트는 **라이브 훅이 아니라 (3)의 명령을 *직접 서브프로세스로*** 돌려 판정한다(방금 쓴 settings 워처 리로드 타이밍에 의존하지 않는다). 세 픽스처를 고정한다 — 두 SETTER 런이 *동일하게* 검증하도록:
+
+**픽스처 준비(라이브 상태 비오염)**: 실제 `dlc-meta/cycles`를 건드리지 않도록 *임시 로그 디렉토리* 둘을 만든다.
+- `EMPTY_LOG/cycles/` — 빈 디렉토리(예: `.gitkeep`만). `cycles/`가 *존재*하므로 `local-log-layer` 선결 조건은 충족되지만, 열린 사이클 기록은 없다.
+- `OPEN_LOG/cycles/c1/audit.md` — `CYCLE-START` 한 줄을 담아 *열린 사이클* 상태를 만든다.
+- 두 실행 모두 `AIDLC_INVARIANTS_DIR`는 **실제 렌더된** `{메타 레포}`(진짜 team.yaml+personal.yaml을 로드해야 렌더를 검증한다)를 가리키고, `AIDLC_LOG_DIR`만 위 임시 디렉토리로 바꾼다.
+
+| # | 픽스처 (env·이벤트·stdin) | 단언 |
+|---|---|---|
+| **P (1차 — PASS 필수)** | `--event PostToolUse`, `AIDLC_LOG_DIR=EMPTY_LOG`, stdin = ⑥ `match`가 걸리는 훅 JSON | **warn JSON이 방출된다** — stdout 비어있지 않고 `systemMessage` 키를 담은 유효 JSON, **exit 0**. 빈 출력이면 **FAIL**(렌더/매치/env 중 하나가 안 실림 = D1 거짓통과) → (6) |
+| S1 (2차) | `--event Stop`, `AIDLC_LOG_DIR=EMPTY_LOG`, stdin `{}` | 빈 출력·exit 0(열린 사이클 없음 → 무발견) |
+| S2 (2차·판별) | `--event PostToolUse`, `AIDLC_LOG_DIR=OPEN_LOG`, stdin = P와 같은 매치 JSON | 빈 출력·exit 0(열린 사이클 존재 → 체크가 위반 아님) — 체크가 *항상 켜지지 않고 판별함*을 증명 |
+
+> **stdin JSON 만들기(⑥ 매치)**: 렌더된 `match`가 평범한 도구명 glob(예: `"Task"`)이면 `{"tool_name":"Task","tool_input":{}}`. `Tool:*substr*` 형태 glob이면 `{"tool_name":"Tool","tool_input":{"command":"…substr…"}}`처럼 `tool_input` 값에 substr을 넣는다(엔진이 `tool_name` 및 `tool_name:<tool_input 문자열값>` 후보로 fnmatch — §엔진 §6). ③이 모든 불변식을 껐으면 P는 성립하지 않으므로 (5)를 **`SKIPPED(비활성)`** 로 보고한다.
+
+**게이트의 나머지 단언(P가 통과한 뒤):**
+- `settings.local.json`이 **유효 JSON**이고 기존 `UserPromptSubmit`(S8.7)·`permissions` 사용자 키가 보존됐는가.
 - `{공유리포}`·`{메타 레포}`에서 개인 산출물(`enforce.py`·개인 yaml·설정·마커)이 추적되지 않고(gitignore 정상), **team yaml은 추적**되는가.
-- **block tier를 켰다면 라이브 파이어로 차단을 실측**(§11.4) — 단, *방금 배선한 세션의 즉석 파이어는 settings 워처 리로드 타이밍 탓에 불안정*하니 확정 파이어는 새 세션(오케스트레이터)에서 하고, 불일치 시 `emit()` 매핑을 정정하며 `INVARIANTS-CONTRACT` 버전을 올린다.
+- **block tier를 켰다면 라이브 파이어로 차단을 실측**(§11.4) — 단, *방금 배선한 세션의 즉석 파이어는 settings 워처 리로드 타이밍 탓에 불안정*하니 확정 파이어는 새 세션(오케스트레이터)에서 하고, 불일치 시 `emit()` 매핑을 정정하며 `INVARIANTS-CONTRACT` 버전을 올린다. (block 라이브 파이어는 *2차 세션 몫*이라 (5) 게이트의 PASS 조건은 아니다 — 게이트 1차 단언은 어디까지나 P의 warn 방출이다.)
+
+> **게이트 실패 시(failover 1)**: P(또는 유효 JSON·team 추적 등 필수 단언)가 실패하면 **성공으로 보고하지 않는다.** EX-15급으로 처리한다 — team·personal·엔진 파일은 **그대로 두되**(재작성·삭제 금지), (4)에서 라이브로 병합한 훅은 **`settings.local.json.bak`에서 롤백**해 *망가진 라이브 훅을 남기지 않는다*(UserPromptSubmit·permissions는 .bak에 그대로 있으므로 함께 복원된다). 그 뒤 (6) degraded 절차로 내려간다(`.unavailable` 마커 + 시끄러운 보고). **중단(ABORT/PAUSE)은 아니다** — 부트스트랩은 계속된다(EX-15 / C FALLBACK).
 
 **(6) 설치 불가 확정 — degraded (EX-15 / C FALLBACK)** — S8.7 (5)와 동일 사상:
 
-- **중단하지 않는다**(ABORT·PAUSE 격상 금지). team·personal·엔진 배치는 마치고 훅만 스킵 — 훅 없이도 엔진은 수동/타 경로로 호출 가능하고 강제는 advisory 등가로 남는다.
+- **중단하지 않는다**(ABORT·PAUSE 격상 금지). 가능한 산출물은 마치고 훅만 스킵 — 훅 없이도 엔진은 수동/타 경로로 호출 가능하고 강제는 advisory 등가로 남는다.
 - `{공유리포}/.claude/invariants-enforce.unavailable`(개인·gitignore)에 실패 층위·시도 명령·에러 요지를 남긴다 → 이후 재시도 폭주 억제. degraded는 어느 OS든 공통.
 - **T3(사용자 명시 호출)은 마커를 무시하고 재시도**하고, 성공하면 마커를 삭제한다(멱등).
+
+> **(failover 4) degraded 경로 열거 — 각 실패는 *이름 있는 결과*로 착지한다. 조용한 반쪽 세팅은 없다.** 어느 경로든 (i) 무엇이 여전히 쓰였는지 명확하고 (ii) 마커+시끄러운 보고를 남긴다. degrade-to-safe(반쪽 라이브 배선보다) 우선.
+
+| 실패 경로 | 여전히 쓰이는 산출물 | 스킵되는 것 | 마커 / 보고 |
+|---|---|---|---|
+| **훅 설치 불가**(①=아니오 — 훅 미지원·권한·정책 차단) | team·personal·엔진 사본 | `settings.local.json` 훅 병합 | `invariants-enforce.unavailable`(층위=hooks) + 보고. 강제는 advisory 등가로 남음 |
+| **python 없음**(실행자 탐지 전부 실패) | team·personal·엔진 사본 | 훅 병합·(5) 게이트(실행 불가) | `unavailable`(층위=no-python, 시도 실행자 목록) + 보고. 항목 17은 `SKIPPED(degraded, no-python)` |
+| **dlc-meta 쓰기 불가**(읽기전용·권한) | 엔진 사본·훅(가능하면) — env가 `dlc-meta`를 가리키나 yaml을 못 씀 | team·personal 렌더 | `unavailable`(층위=meta-not-writable) + 보고. yaml 부재는 엔진에 degraded no-op이라 크래시 없음 |
+| **템플릿 누락**(`invariants.template.yaml`/`enforce.template.py` 부재) | (가능한 것만) | 누락 산출물 | **시끄럽게 보고**(층위=template-missing — 프레임워크 체크아웃 손상 신호). 마커를 쓰되 다음 세션에 사람이 확인하도록 사유 명시 |
+| **(5) 게이트 실패**(P 미방출 등 — 위 (5)) | team·personal·엔진 사본(그대로) | 라이브 훅(→ .bak 롤백) | `unavailable`(층위=self-verify-failed, 실측 출력 요지) + 보고. **성공 보고 금지** |
+
+> 마커조차 쓸 수 없는 읽기전용 환경이면 *세션당 1회* 시도 한도가 재시도 폭주를 대신 막는다(S8.7 (5)·`CLAUDE.md` §0.5 (5)와 동일). 어떤 경로든 **부트스트랩 자체는 성공**이다 — 잃는 것은 훅 강제(지속)뿐이고 정체성·엔진·선언은 남는다.
 
 ---
 
@@ -825,7 +883,7 @@ python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslash
 | 14 | **(조건부, S5.8) 축적 지식 원천 기록 정합** | 운영 시: `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');t=open('ORCHESTRATOR.md',encoding='utf-8').read();print('## 축적 지식 원천' in t, '작업 후 갱신' in t)"` + 공용 스니펫 **[SEC]** / 미운영 시: 같은 명령의 첫 값이 `False` | 운영: 첫 값 `True` · [SEC] 통과 · Q5.8.4가 "쓰기 불가"면 둘째 값이 `False` / 미운영: 첫 값 `False`(섹션 자체가 없음). 어긋나면 **FAIL** |
 | 15 | **메타 레포 위치 마커** (S6.5) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');d=dict(l.split('=',1) for l in open(r'{공유리포}/.claude/dlc-meta-location.txt',encoding='utf-8').read().splitlines() if '=' in l and not l.startswith('#'));import os;print(d['META_REPO_PATH'], os.path.isdir(d['META_REPO_PATH']))"` + `git -C {공유리포} check-ignore .claude/dlc-meta-location.txt` | 경로가 실제 디렉토리(`True`) · check-ignore 종료코드 0(무시됨 — 추적되면 **FAIL**). 환경 제약으로 쓰지 못했으면 **`SKIPPED(degraded, 사유)`** (**FAIL 아님** — C FALLBACK. 다음 세션은 `CLAUDE.md` §0-2 폴백) |
 | 16 | **세션 자가점검 훅 설치 성사** (S8.7) | 채택한 **훅 명령을 실제로 실행**한 stdout + `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import json;json.load(open(r'{공유리포}/.claude/settings.local.json',encoding='utf-8'));print('valid json')"` + `git -C {공유리포} check-ignore .claude/settings.local.json .claude/orchestrator-selfcheck.txt` | stdout 첫 줄이 `[SELFCHECK {n}]`이고 무손상(항목 12 [ENC]로 재확인) · `valid json` · 기존 사용자 키 보존 · 두 개인 산출물 모두 무시됨 |
-| 17 | **(조건부, S8.8) 불변식 강제 배선 성사** | 채택한 **Stop 훅 명령을 실제로 실행**(무발견 픽스처)한 exit code·stdout + `git -C {공유리포} check-ignore .claude/enforce.py .claude/settings.local.json` + `git -C {메타 레포} check-ignore invariants.personal.yaml` + `git -C {메타 레포} ls-files --error-unmatch invariants.team.yaml` + `settings.local.json`이 유효 JSON이고 `UserPromptSubmit`(S8.7) 보존 | 무발견 실행이 **exit 0·빈 출력** · 개인 산출물(`enforce.py`·`invariants.personal.yaml`·설정)이 모두 무시됨 · **team yaml은 추적됨**(ls-files 종료코드 0) · `UserPromptSubmit` 보존. 훅 설치 불가 degraded면 **`SKIPPED(degraded, 사유)`**(FAIL 아님 — EX-15 / C FALLBACK, `.unavailable` 마커 확인). 훅 미활성(인터뷰 ③ 전부 off)이면 `SKIPPED(비활성)` |
+| 17 | **(조건부, S8.8) 불변식 강제 배선 성사** | **1차(PASS 필수) — POSITIVE 픽스처**: 채택한 **PostToolUse 훅 명령을 직접 서브프로세스로 실행**하되 `AIDLC_INVARIANTS_DIR`=실제 `{메타 레포}` · `AIDLC_LOG_DIR`=*빈* `cycles/`를 담은 임시 디렉토리 · stdin=⑥ `match`가 걸리는 훅 JSON(S8.8 (5) 픽스처 P). **2차**: Stop+빈 cycles(픽스처 S1) 및 PostToolUse+열린 cycle(픽스처 S2). + `git -C {공유리포} check-ignore .claude/enforce.py .claude/settings.local.json` + `git -C {메타 레포} check-ignore invariants.personal.yaml` + `git -C {메타 레포} ls-files --error-unmatch invariants.team.yaml` + `settings.local.json`이 유효 JSON이고 `UserPromptSubmit`(S8.7) 보존 | **P가 warn JSON을 방출(비어있지 않은 유효 JSON에 `systemMessage`, exit 0)** — *이것이 렌더+매치+env 로드를 증명하는 1차 단언이다*. 빈 출력이면 **FAIL**(D1 거짓통과 — degraded-safe 엔진은 망가진 렌더에서도 빈 출력·exit 0을 내므로 무발견 런만으로는 반증 불가). 2차: S1·S2 모두 **exit 0·빈 출력** · 개인 산출물(`enforce.py`·`invariants.personal.yaml`·설정)이 모두 무시됨 · **team yaml은 추적됨**(ls-files 종료코드 0) · `UserPromptSubmit` 보존. 훅 설치 불가/게이트 실패 degraded면 **`SKIPPED(degraded, 사유)`**(FAIL 아님 — EX-15 / C FALLBACK, `.unavailable` 마커 확인). 훅 미활성(인터뷰 ③ 전부 off)이면 `SKIPPED(비활성)` |
 
 **항목 5b 모드별 합격 기준** (유도 표는 *인터뷰가 채우는데* 합류는 인터뷰를 통째로 스킵한다 — 그 간극을 여기서 닫는다):
 
