@@ -78,11 +78,11 @@ SELF-CHECK 훅(`templates/SELF-CHECK.template.md`)이 *정체성 재주입*에 �
 
 | tier | 위반 시 훅 동작 | 용도 |
 |---|---|---|
-| **block** | 차단(blocking JSON — `{"decision":"block","reason":…}`) | 비가역·중대 절차에만 |
+| **block** | 차단(blocking JSON — `{"decision":"block","reason":…}`) **+ exit code 2**(신뢰 가능한 차단 채널). Stop·PreToolUse에서 실효적 | 비가역·중대 절차에만 |
 | **warn** | 비차단 경고(`systemMessage` / `hookSpecificOutput.additionalContext`) | **기본 권장값** |
 | **advisory** | no-op — 훅 출력 없음(가시화·기록만) | 저위험 넛지 · degraded 폴백 등가값 |
 
-- 훅 JSON 형태의 단일 원천은 `enforce.template.py` §7 `emit()`이며, **Claude Code hook contract**에 맞춘다. STEP 2에서 라이브 하네스로 검증한다.
+- 훅 JSON 형태의 단일 원천은 `enforce.template.py` §7 `emit()`이며, **Claude Code hook contract**에 맞춘다 — **계약은 §11.4에서 확정**(출처: `code.claude.com/docs/en/hooks.md`, v2.1.2xx). block은 exit 2를 쓰고, Stop 재진입은 `stop_hook_active`로 무한루프를 가드한다.
 - 여러 불변식이 동시에 걸리면 *최고 tier*로 집계한다.
 
 ---
@@ -131,7 +131,7 @@ SELF-CHECK 훅(`templates/SELF-CHECK.template.md`)이 *정체성 재주입*에 �
 
 본 변경(STEP 1)은 **템플릿·명세 3개 파일 추가뿐**이다. 아래는 후속 STEP 2 범위이며, 여기서는 손대지 않는다 (SETTER.md·settings.json·CLAUDE.md 무수정):
 
-> **STEP 2 설계(프로즈)는 §11(인터뷰 + 합성 행동가이드)·§12(SETTER S8.8 초안)에 있다.** 이는 *스펙/설계 프로즈일 뿐* — 아직 `agents/SETTER.md`의 라이브 번호 절차를 재배선하지 않는다. §12의 S-phase 블록을 SETTER.md에 이식하는 것이 실제 배선(STEP 2 실행)이다.
+> **갱신 (STEP-2a)**: 아래 항목 1·2는 **`agents/SETTER.md` S8.8로 이식·배선 완료**됐다 — 설계(§11·§12)와 라이브 절차(SETTER.md S8.8)가 정합한다. 남은 STEP 2 잔여는 항목 3(block tier 라이브 파이어 — §11.4 (d), 새 세션/오케스트레이터 몫)과 항목 4(트래커 결합 슬롯 실제 채움 — 트래커 운영 배포에서만)이다.
 
 1. **SETTER 조립 단계** — `invariants.template.yaml`을 두 인스턴스(`invariants.team.yaml` 추적 / `invariants.personal.yaml` 개인·gitignore)로 렌더하고, `enforce.template.py`를 실행 위치에 배치. `.gitignore`에 개인 파일·백업 추가 확인. (선례: S8.7 자가점검 훅 설치, S8.5 `.env` 부트스트랩.)
 2. **훅 배선** — `{공유리포}/.claude/settings.local.json`에 `PostToolUse`·`Stop` 훅을 *병합*(덮어쓰기 금지)으로 추가하고, `AIDLC_INVARIANTS_DIR`·`AIDLC_LOG_DIR` env로 실제 절대 경로를 바인딩. OS·셸 적응은 S8.7 패턴 재사용.
@@ -153,7 +153,7 @@ SELF-CHECK 훅(`templates/SELF-CHECK.template.md`)이 *정체성 재주입*에 �
 | `templates/enforce.template.py` | 범용 엔진 — 병합·체크·훅 JSON 계약(`emit`) 구현 |
 | `templates/SELF-CHECK.template.md` | 미러 패턴 — "기계적 주입/강제" + degraded 철학의 선례 |
 | `specs/CYCLE-LOG.md` | 파일럿 대상 — 열림 판정(CYCLE-START/END/REOPEN)의 형식 원천 |
-| `agents/SETTER.md` (STEP 2) | 본 템플릿을 인스턴스로 조립·훅 배선 (§9 개요·§11 설계·**§12 S8.8 초안** — 아직 SETTER.md 미이식) |
+| `agents/SETTER.md` **S8.8** | 본 템플릿을 인스턴스로 조립·훅 배선 (§9 개요·§11 설계·§12 근거) — **S8.8로 이식 완료(라이브)**. 배선 정본 |
 | `agents/orchestrator/ERROR-POLICY.md` | EX-15 / C FALLBACK — degraded 처리 정합 |
 | `CLAUDE.md` §0.5 | degraded 철학(훅은 보강이지 전제가 아니다)의 상위 원천 |
 | `specs/VERIFICATION.md` | STEP 2 훅 계약 검증이 따르는 지상검증 규율(POLICY-VERIFY) |
@@ -162,7 +162,7 @@ SELF-CHECK 훅(`templates/SELF-CHECK.template.md`)이 *정체성 재주입*에 �
 
 ## 11. 인터뷰 + 합성 행동가이드 (STEP 2 설계 — 규율 프로즈)
 
-> **본 절과 §12는 STEP 2의 설계(프로즈)다.** 아직 `agents/SETTER.md`의 라이브 번호 절차를 재배선하지 않는다 — 여기서 규율을 확정하고, 배선은 §12의 S-phase 블록을 SETTER.md에 이식할 때 한다.
+> **본 절과 §12는 STEP 2 배선의 설계(프로즈)다.** 이 설계는 **`agents/SETTER.md` S8.8로 이식 완료**됐다(STEP-2a) — 라이브 절차의 정본은 SETTER.md S8.8이고, 본 절은 그 규율·근거의 단일 원천이다(둘을 함께 갱신).
 > **미러·선례**: SETTER **S8.7**(SELF-CHECK 훅 설치)의 (1)~(5) 구조와 `CLAUDE.md` §0.5 degraded 철학을 그대로 따른다. 다른 점만 이 절이 새로 정의한다.
 
 핵심 질문: *중립 적응형 템플릿(`invariants.template.yaml` + `enforce.template.py`)이 어떻게 배포별 실체 인스턴스가 되는가?* — SETTER가 **인터뷰로 답을 모으고(§11.1) → 답을 템플릿에 합성(§11.2)** 한다. 프레임워크 레포는 계속 100% 중립이고, 환경 특화(트래커 결합·실제 도구명·OS별 실행자)는 **전부 인스턴스에만** 존재한다.
@@ -236,18 +236,37 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 
 - 프레임워크 레포는 **트래커·프로젝트·회사·OS를 무참조**로 유지한다. 실제 도구명(⑥)·트래커 결합 불변식(②)·OS별 python 실행자(⑤)는 **전부 인스턴스에만** 존재한다.
 
-### 11.4 라이브 훅 계약 검증 (POLICY-VERIFY — 배선 시 필수)
+### 11.4 훅 계약 — 확정 (Claude Code hook contract)
 
-- 배선할 때 `emit()`의 JSON 형태를 **실제 하네스에 대고 실측**한다(문서화된 계약 클레임이 아니라 지상검증 — `specs/VERIFICATION.md`).
-- **TASK 1에서 warn 형태는 실측 확인됨** — `{"systemMessage":…}`(Stop) 및 `{"systemMessage":…, "hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":…}}`(PostToolUse)가 cp949 콘솔·`PYTHONIOENCODING` 없이 **크래시 없이 exit 0**으로 방출됨(한국어·em-dash 포함). 무발견/degraded 경로는 **빈 출력 + exit 0**도 확인.
-- **block 형태(`{"decision":"block","reason":…}`)는 아직 라이브 파이어 미검증** — block tier를 켜는 첫 배선에서 하네스가 실제로 진행을 막는지 실측하고, 불일치 시 `emit()` 매핑을 정정하며 `INVARIANTS-CONTRACT` 버전을 올린다.
-- 검증 절차: warn·block 각각 (a) 위반을 유발 → (b) 하네스가 그 JSON을 실제로 소비(경고 표시/차단)하는지 확인 → (c) 명령·출력 원문을 보고에 싣는다.
+> **출처**: `code.claude.com/docs/en/hooks.md` (v2.1.2xx, 2026-09-11 fetch — claude-code-guide 에이전트가 공식 문서 회수·대조). 아래는 *문서화된 계약에 대고 확정*한 형태이며, `enforce.template.py` §7 `emit()`이 이 계약의 단일 구현 원천이다.
+
+**(a) warn — 형태 확정 + 실측 확인**
+
+- Stop: `{"systemMessage": <msg>}`
+- PostToolUse: `{"systemMessage": <msg>, "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": <msg>}}`
+- 두 형태 모두 cp949 콘솔·`PYTHONIOENCODING` 없이 **크래시 없이 exit 0**으로 방출됨이 실측 확인됨(한국어·em-dash 포함). 무발견/degraded 경로는 **빈 출력 + exit 0**도 확인. 계약 문서와 일치.
+
+**(b) block — 형태 확정 + 차단 채널은 exit 2**
+
+- 형태: `{"decision": "block", "reason": <msg>}`. 이는 **Stop**에서 그 stop을 거부하고 `reason`을 다음 턴에 되먹이는 올바른 형태다(문서 확인).
+- **단, exit code 2 가 신뢰 가능한 차단 채널이다.** `exit 0 + decision:block`은 *자문(advisory)에 그칠 수 있다* — 특히 **PostToolUse는 사후 실행**이라 그 시점의 block은 도구 실행을 되돌리지 못한다. 따라서 엔진은 **block JSON을 stdout에 먼저 쓴 뒤 exit 2**로 나간다(§엔진 §7·TASK 1 실측: block tier → exit 2 + JSON, 확인됨).
+- **block은 Stop·PreToolUse에서 실효적이다.** **PostToolUse는 사후 실행이므로 block을 켜지 말고 warn으로 둔다**(파일럿 `cycle-must-log`의 PostToolUse 바인딩이 기본 warn인 이유).
+
+**(c) Stop-block 무한루프 가드 — `stop_hook_active`**
+
+- Stop 훅이 block을 내면 하네스가 stop을 거부하고 다음 턴을 돌리는데, 그 턴 경계에서 훅이 또 block을 내면 **차단→재실행→재차단 무한루프** 위험이 있다(문서 경고).
+- 하네스는 재진입한 Stop 훅 입력에 **`stop_hook_active: true`**(boolean)를 실어 준다. 엔진은 *Stop이고 `stop_hook_active`가 true면 block을 warn으로 강등*해 루프를 끊는다(§엔진 `emit()`·TASK 1 실측: 강등되어 exit 0·warn, 확인됨). PostToolUse는 턴을 재개시키지 않으므로 이 가드의 영향을 받지 않는다.
+
+**(d) 배선 시 라이브 파이어 (POLICY-VERIFY — block tier를 켤 때)**
+
+- warn·block 각각 (a) 위반을 유발 → (b) 하네스가 그 JSON을 실제로 소비(경고 표시/차단)하는지 확인 → (c) 명령·출력 원문을 보고에 싣는다.
+- **세션 내 즉석(throwaway) 라이브 파이어는 신뢰할 수 없다** — 훅 설정을 방금 쓴 세션에서는 settings 워처의 리로드 타이밍 탓에 *이번 턴*엔 아직 훅이 안 걸릴 수 있다. **확정적 라이브 파이어는 배선 시점 / 새 세션에서** 한다(오케스트레이터·메인 세션 책임). 불일치가 확인되면 `emit()` 매핑을 정정하고 `INVARIANTS-CONTRACT` 버전을 올린다.
 
 ---
 
-## 12. SETTER 반영 대상 — S8.8 초안 (STEP 2 배선 시 SETTER.md에 이식)
+## 12. SETTER 반영 대상 — S8.8 (이식 완료 — `agents/SETTER.md` S8.8 라이브)
 
-> **본 절은 프로즈 초안이다 — 아직 `agents/SETTER.md`를 수정하지 않는다.** STEP 2 배선 때 아래를 SETTER.md 페이즈 2(S8.7 다음)에 절로 이식한다. 구조는 S8.7(자가점검 훅 설치)의 (1)~(5)를 미러하며, 불변식 특유의 차이만 명시한다.
+> **본 절의 초안은 `agents/SETTER.md`에 실제 절 S8.8로 이식 완료됐다 (STEP-2a).** 배선의 *정본은 SETTER.md의 S8.8*이며, 아래는 그 설계 근거·요약을 남긴 것이다. 구조는 S8.7(자가점검 훅 설치)의 (0)~(6)을 미러하며, 불변식 특유의 차이(team=신규만 / 엔진·훅·개인=신규·합류·보수, 두 yaml co-locate §11.2.1, python 직접 호출 훅 §11.1.1)를 명시한다. 향후 배선 규율 변경은 SETTER.md S8.8과 본 절을 함께 갱신한다(원칙 8 — 단일 원천 정합).
 > **모드 규칙(§ SETTER 모드표 반영)**: team yaml은 *공유 인스턴스*라 **신규**만 생성하고 **합류**는 clone으로 받는다(재생성 금지). 반면 **엔진 사본·훅·개인 yaml·`.unavailable`은 머신 로컬**이라 **신규·합류·보수 모두 수행**한다(선례: S8.7이 개인 훅 산출물을 세 모드 모두에서 설치).
 
 #### S8.8. 불변식 강제 배선 (team=신규만 / 엔진·훅·개인=신규·합류·보수)
@@ -297,6 +316,8 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 
 STEP 2(SETTER 조립·훅 배선·라이브 계약 검증·트래커 결합 슬롯 채움)의 *실행*(SETTER.md 재배선·settings.json·CLAUDE.md 수정)은 본 변경에 포함되지 않는다 (§9).
 
-STEP-2 보강(설계 프로즈 — SETTER.md 무수정): §11(인터뷰 6문항 + 합성 행동가이드 + OS 적응 훅 규칙 + 추적 분리)·§12(SETTER **S8.8** 초안, S8.7 미러) 추가. `enforce.template.py`는 stdout·stdin UTF-8 강제 + 선행 BOM 관용으로 보강돼 cp949 콘솔에서도 자기 출력으로 크래시하지 않음이 실증됨(warn 형태·degraded 경로 확인, block 형태는 라이브 파이어 대기 — §11.4). 훅은 python 직접 호출로 OS 중립(PowerShell 전용 금지).
+STEP-2 보강(설계 프로즈 — SETTER.md 무수정): §11(인터뷰 6문항 + 합성 행동가이드 + OS 적응 훅 규칙 + 추적 분리)·§12(SETTER **S8.8** 초안, S8.7 미러) 추가. `enforce.template.py`는 stdout·stdin UTF-8 강제 + 선행 BOM 관용으로 보강돼 cp949 콘솔에서도 자기 출력으로 크래시하지 않음이 실증됨(warn 형태·degraded 경로 확인). 훅은 python 직접 호출로 OS 중립(PowerShell 전용 금지).
+
+STEP-2a(실제 배선): (1) **훅 계약 확정** — 공식 문서(`code.claude.com/docs/en/hooks.md`, v2.1.2xx, 2026-09-11 fetch) 대조로 §11.4를 확정. warn 형태 정합, **block은 exit code 2가 신뢰 가능한 차단 채널**(exit 0 + decision:block은 자문에 그칠 수 있음, 특히 PostToolUse 사후 실행), block은 Stop·PreToolUse에서 실효(PostToolUse는 warn 유지), **Stop-block 무한루프는 `stop_hook_active`로 가드**. (2) **엔진 반영** — `enforce.template.py` `emit()`/`main()`이 block tier → JSON + exit 2, Stop 재진입 시 block→warn 강등을 구현(서브프로세스 단위 검증: block→exit2+JSON / warn→exit0+JSON / 무발견·degraded→exit0+빈출력 / Stop+stop_hook_active→강등, 전부 통과). (3) **S8.8 이식** — §12 초안을 `agents/SETTER.md`에 라이브 절 S8.8로 이식(S8.7 (0)~(6) 미러, team=신규만·엔진/훅/개인=신규·합류·보수, 두 yaml co-locate §11.2.1, python 직접 호출 훅, S9 항목 17·파일트리·참조표 갱신). 잔여: block tier 라이브 파이어(새 세션/오케스트레이터).
 
 향후 변경은 깃 PR/머지 (원칙 8).

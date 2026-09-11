@@ -28,8 +28,11 @@ YAML 파싱 결정 (요구됨)
 호출 규약
   enforce.py --event {PostToolUse|Stop}   # 훅 JSON을 stdin으로 받음 (tool_name, tool_input, ...)
 
-훅 JSON 계약 (Claude Code hook contract — STEP 2에서 라이브 하네스로 검증)
+훅 JSON 계약 (Claude Code hook contract — 확정. 출처: code.claude.com/docs/en/hooks.md,
+  v2.1.2xx, 2026-09-11 fetch)
   아래 emit() 의 매핑이 계약이다. block/warn/advisory tier가 각각 어떤 JSON 형태로 나가는지 명시.
+  block 은 exit code 2 를 신뢰 가능한 차단 채널로 쓰고(§7 참조), Stop 재진입 시
+  stop_hook_active 로 무한루프를 가드한다.
 """
 
 import fnmatch
@@ -453,25 +456,43 @@ def evaluate(event, tool_name, tool_input, invariants, log_dir):
 
 
 # ===========================================================================
-# 7. 훅 JSON 계약 방출 (Claude Code hook contract — STEP 2에서 라이브 검증)
+# 7. 훅 JSON 계약 방출 (Claude Code hook contract — 확정. 출처: code.claude.com/
+#    docs/en/hooks.md, v2.1.2xx, 2026-09-11 fetch)
 # ---------------------------------------------------------------------------
-#   tier=block    → {"decision": "block", "reason": <msg>}
-#                    (Stop·PostToolUse 공통 — 모델에게 이유를 되먹여 진행을 막는다)
+#   tier=block    → {"decision": "block", "reason": <msg>}  +  exit code 2
+#                    exit 2 가 신뢰 가능한 차단 채널이다 — exit 0 + decision:block 은
+#                    advisory 에 그칠 수 있다(특히 PostToolUse 는 사후 실행이라 차단이
+#                    자문에 그친다). 따라서 JSON 을 stdout 에 먼저 쓴 뒤 exit 2 로 나간다.
+#                    block 은 Stop·PreToolUse 에서 실효적이다.
 #   tier=warn     → Stop:        {"systemMessage": <msg>}
 #                    PostToolUse: {"systemMessage": <msg>,
 #                                  "hookSpecificOutput": {"hookEventName": "PostToolUse",
 #                                                          "additionalContext": <msg>}}
-#   tier=advisory → 출력 없음 (no-op)
-#   대안: exit code 2 + stderr 로도 차단 가능하나, 여기선 명시적 JSON 계약을 쓴다.
+#                    (warn 두 형태는 cp949 콘솔·PYTHONIOENCODING 없이 크래시 없이 방출됨이
+#                     실측 확인됨 — INVARIANT-ENFORCEMENT §11.4.)
+#   tier=advisory → 출력 없음 (no-op) + exit 0
 #   여러 불변식이 동시에 걸리면 *최고 tier*로 집계한다.
+#
+#   Stop-block 무한루프 가드: Stop 훅이 block 을 내면 하네스가 그 stop 을 거부하고
+#   다음 턴을 돌리는데, 그 턴 경계에서 훅이 또 block 을 내면 차단→재실행→재차단이
+#   무한 반복된다. 하네스는 재진입한 Stop 훅 입력에 `stop_hook_active: true`를 실어
+#   준다 — 그 경우 Stop 의 block 을 warn 으로 강등해 루프를 끊는다. (PostToolUse 는
+#   턴을 재개시키지 않으므로 이 가드의 영향을 받지 않는다.)
 # ===========================================================================
-def emit(event, findings):
+def emit(event, findings, stop_hook_active=False):
+    """방출할 (JSON dict 또는 None, exit_code) 튜플을 반환한다.
+
+    exit_code = 2 는 block tier 가 최종 발동했을 때(신뢰 가능한 차단 채널). 그 외 모두 0.
+    stop_hook_active=True 로 재진입한 Stop 이벤트에서는 block 을 내지 않는다(루프 가드)."""
     if not findings:
-        return None
+        return (None, 0)
     top = max(_TIER_ORDER.get(t, 0) for t, _ in findings)
     text = "\n".join(m for _, m in findings)
+    # Stop-block 무한루프 가드 — 재진입한 Stop 은 block 을 warn 으로 강등.
+    if top >= _TIER_ORDER["block"] and event == "Stop" and stop_hook_active:
+        top = _TIER_ORDER["warn"]
     if top >= _TIER_ORDER["block"]:
-        return {"decision": "block", "reason": text}
+        return ({"decision": "block", "reason": text}, 2)
     if top == _TIER_ORDER["warn"]:
         out = {"systemMessage": text}
         if event == "PostToolUse":
@@ -479,8 +500,8 @@ def emit(event, findings):
                 "hookEventName": "PostToolUse",
                 "additionalContext": text,
             }
-        return out
-    return None  # advisory → no-op
+        return (out, 0)
+    return (None, 0)  # advisory → no-op
 
 
 def _emit_write(out):
@@ -552,15 +573,19 @@ def main(argv=None):
             data = {}
     tool_name = data.get("tool_name") if isinstance(data, dict) else None
     tool_input = (data.get("tool_input") if isinstance(data, dict) else None) or {}
+    # Stop-block 무한루프 가드용 신호 — 재진입한 Stop 훅이면 하네스가 true 로 실어 준다.
+    # 깨지거나 없으면 False(=미재진입)로 안전 처리 (degraded-safe).
+    stop_hook_active = bool(data.get("stop_hook_active")) if isinstance(data, dict) else False
+    code = 0
     try:
         invs = load_invariants(_base_dir())
         findings = evaluate(event, tool_name, tool_input, invs, _log_dir())
-        out = emit(event, findings)
+        out, code = emit(event, findings, stop_hook_active)
     except Exception:
-        out = None  # 무엇이 어긋나도 조용히 통과 (EX-15 / C FALLBACK)
+        out, code = None, 0  # 무엇이 어긋나도 조용히 통과 (EX-15 / C FALLBACK)
     if out is not None:
-        _emit_write(out)  # UTF-8 견고 쓰기 (reconfigure 불가 런타임도 버퍼 바이트로 안전)
-    return 0
+        _emit_write(out)  # JSON 을 먼저 쓴다 (block 이면 그 뒤 exit 2). reconfigure 불가 런타임도 버퍼 바이트로 안전
+    return code
 
 
 if __name__ == "__main__":
