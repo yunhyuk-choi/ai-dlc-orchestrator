@@ -541,6 +541,70 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 
 ---
 
+## 14. git 최신성 강제 — `repo-fresh-before-access` (feedback-pull-before-work 승격)
+
+> **상태: IMPLEMENTED (도입 tier=warn · 계약 v2 유지 · 가산 체크 1종).** 엔진에 체크 `check_repo_fresh_before_access` + git/마커 헬퍼가, 템플릿에 불변식 `repo-fresh-before-access`(PreToolUse·warn)가 추가됐다.
+
+### 14.1 문제 — "착수·참조 전 pull"은 MD 규율로는 표류한다
+
+팀 개발 전제에서 **모든 관련 레포(코드·문서·지식트리)를 작업·참조 전에 `git fetch && git pull`로 최신화**하는 것은 반복적으로 유실되는 중대 절차다(병렬 세션 stale·MR 직전 컨플릭트 — 실측 실패 모드). 이 규율은 두 종류의 접근 *양쪽*에 성립해야 한다:
+
+- **reference-read** — 다른 레포의 구현을 확인하거나 문서·정보를 조회할 때(그 레포가 stale이면 없는·낡은 코드를 근거로 판단한다).
+- **작업 레포** — 실제 편집·빌드·커밋 대상 레포.
+
+§2의 논리대로, 이런 "매번 해야 하는" 절차는 Markdown에 아무리 적어도 모델이 그 순간 따르기로 *결정*해야만 지켜진다. 그 결정은 압축·긴 사이클에서 누락된다 → 강제층으로 승격한다.
+
+### 14.2 설계 = 옵션 A (검사 후 warn, 훅은 pull 하지 않는다)
+
+- **훅은 `git pull`을 대신 실행하지 않는다.** *최신성을 검사*하고, stale이면 경고해 **에이전트가 먼저 pull하게** 만든다. (자동 pull은 예기치 못한 네트워크·머지·인증 부작용을 훅에 넣게 되어 중립·degraded 원칙과 충돌한다.)
+- **원격 있는 레포에만 적용** — 원격이 없으면 SKIP(agnostic·중립). 로컬 전용 레포에 "pull하라"는 무의미하다.
+- **네트워크 없는 값싼 판정** — `.git/FETCH_HEAD`의 mtime을 *세션 앵커*(세션 첫 매치 도구 실행 시점 ≈ 세션 시작) mtime과 비교한다. `FETCH_HEAD mtime >= 앵커` 이면 *이번 세션에 fetch/pull됨* → fresh. **네트워크 호출이 아니라 stat 한 번**이다.
+- **세션당 레포당 1회** — `<state_dir>/reposcan-<session>-<repo-hash>` 마커로 한 번 발동하면 이후 그 레포 접근엔 조용하다(매 Read마다 뜨지 않음 — 토큰·비용 절약).
+
+### 14.3 판정 로직 (엔진 `check_repo_fresh_before_access`)
+
+| 상황 | 처리 |
+|---|---|
+| 세션 앵커를 *가장 먼저* 확보(없으면 생성) | refresh 명령·스킵보다 앞 — 'pull 후 read'가 새 FETCH_HEAD(앵커 이후 mtime)로 fresh 판정되게 보장 |
+| 접근 경로가 git 레포 아님 | SKIP (no-op) |
+| Bash/PowerShell 명령이 `git pull\|fetch\|clone\|remote update` | SKIP (최신화 행위 자체 — 마커도 안 남겨 뒤 접근이 재판정) |
+| 레포에 원격 없음 | SKIP (agnostic) |
+| 이번 세션에 이미 발동(마커 존재) | SKIP (세션당 레포당 1회) |
+| 앵커 확보 실패(쓰기 불가 등) | 판정 보류 no-op (오탐 방지) |
+| `FETCH_HEAD` 부재(한 번도 fetch 안 됨) | **stale → warn** (취지: pull 먼저) |
+| `FETCH_HEAD mtime >= 앵커` | fresh → no-op |
+| 그 외(FETCH_HEAD가 앵커보다 오래됨) | **stale → warn** |
+
+- 접근 경로 유도: 파일-경로 도구(Read/Edit/Grep 등)는 `tool_input`의 `file_path`/`path`, 그 외(Bash/PowerShell)는 훅 JSON의 `cwd`. 상대경로는 `cwd` 기준 절대화. (엔진 `main()`이 `cwd`를 새로 추출해 `evaluate()`→ctx로 전달 — 기존 체크는 여분 ctx 키를 무시하므로 무회귀.)
+- `.git`이 파일이면(worktree/submodule) `gitdir:` 참조를 해소한다(best-effort).
+
+### 14.4 tier·이벤트·중립·degraded
+
+- **tier=warn 먼저 도입** — 키드 3종의 롤아웃(§13.7 P1→P3)과 같은 규율: 신규 불변식은 warn으로 도입하고 **block 승격은 라이브 소크 이후 별도 단계**로 미룬다(오탐이 작업을 막지 않게). `personal-adjust: escalate-only`(개인은 warn→block 승격만).
+- **이벤트=PreToolUse** — 접근 *전* 넛지. PreToolUse warn은 실행을 막지 않고 `systemMessage`/`additionalContext`로 알린다(§11.4 (a)). block 승격 시 PreToolUse deny가 실행 전 진짜 차단 지점이다(§11.4 (b)).
+- **중립** — 로컬 파일(`.git/FETCH_HEAD`·`.git/config`·`state_dir` 마커)만 읽는다. 트래커·프로젝트·회사·네트워크 무참조.
+- **degraded-safe** — `requires: [keyed-state-dir]`(마커 저장소 부재면 조용히 SKIP). 무엇이 어긋나도 크래시 없이 no-op. 마커는 `state_dir`(gitignore·ephemeral)에 살아 언제 휘발해도 안전.
+- **키드 레코드와 격리** — 이 체크는 §13.4 write-helper의 work-item 레코드를 건드리지 않고 자기 전용 `reposcan-*` 세션 마커만 쓴다(별개 네임스페이스 — write-helper의 단일-writer 경계 보존).
+
+### 14.5 계약 — v2 유지 (가산)
+
+`repo-fresh-before-access` 추가는 **계약을 올리지 않는다.** 순수 가산이다: 기존 체크·`emit()` 훅 JSON 형태·레코드 스키마가 불변이고, **새 선결 조건 없이 기존 `keyed-state-dir`를 재사용**하며, 미지원 체크 id는 엔진이 `CHECKS.get`→None→조용히 스킵하므로 신·구 엔진↔yaml 혼용도 안전(degraded-safe). §13.7의 Phase 2→3가 tier/event만 바꿔 v2를 유지한 것과 같은 사상 — 여기선 *체크 하나가 늘되 그 체크를 모르는 엔진은 무시*할 뿐이라 실질 계약(엔진↔SETTER 렌더 yaml↔하네스 JSON)이 깨지지 않는다.
+
+### 14.6 룰북 규율 이식
+
+`feedback-pull-before-work`("작업·참조 전 모든 관련 레포 git pull 최신화, MR 직전 재확인")를 강제층으로 승격하면서, 오케스트레이터 룰북에도 규율 포인터를 남긴다 — `ORCHESTRATOR-AGENT.md` 책임 5 규율 노트(모든 관련 레포는 참조·작업 전 최신화, 엔진이 검사). 강제(엔진)와 규율(룰북)이 짝으로 존재해야 degraded(훅 부재) 환경에서도 규율이 상기된다.
+
+### 14.7 양방향 참조 (본 절 추가분)
+
+| 문서 | 관계 |
+|---|---|
+| `templates/enforce.template.py` | `check_repo_fresh_before_access` + git/마커 헬퍼 + `evaluate()`/`main()`의 `cwd`·`session_id` ctx 전달 |
+| `templates/invariants.template.yaml` | 불변식 `repo-fresh-before-access`(PreToolUse·warn·`requires:[keyed-state-dir]`) + 체크 id 문서 |
+| `agents/orchestrator/ORCHESTRATOR-AGENT.md` 책임 5 | pull-before-work 규율 노트(강제층 짝) |
+| 후속(follow-up) | 라이브 소크 후 block 승격(PreToolUse deny) · 오래된 `reposcan-*` 마커 GC(현재 ephemeral 휘발 의존) |
+
+---
+
 ## 변경 이력
 
 본 명세 v1.0 — 불변식 강제 규율(POLICY-INVARIANT) 신설. STEP 1(템플릿·명세만): `invariants.template.yaml`(선언 단일 원천 + `cycle-must-log` 파일럿 + `<SLOT>`), `enforce.template.py`(중립·degraded-safe 범용 엔진, stdlib-only YAML 폴백), 본 명세 3종 추가.
@@ -564,5 +628,7 @@ STEP-3 확정(§13 — 사용자 검토로 설계 확정, **여전히 미구현�
 STEP-3 구현(§13 — 키드 상태머신 강제화, **IMPLEMENTED · Phase 2 · 계약 v1→v2**): 확정 설계(STEP-3 확정 §13.8)를 엔진·템플릿·SETTER S8.8에 실제 구현했다. **엔진(`enforce.template.py`)**: (1) 키 획득 `_resolve_work_key`(우선순위 `--work-key`/`AIDLC_WORK_KEY` > active-포인터(`_read_active_pointer`, stdin `session_id`로 조회) > None→no-op), 키 안전화 `_sanitize_key`(영숫자·`-`·`_`만, 길이 200, 경로 주입 방지); (2) state_dir IO `_read_state`/`_write_state`(atomic temp+rename `_atomic_write`), 해석 `_resolve_state_dir`(기본 `<base-dir>/.aidlc-state`); (3) **write-helper 서브커맨드** `record`·`transition`·`close`·`set-active`·`reconcile`(CHECK 경로는 읽기 전용 — Q4=B, 진입점 분리) — 스키마 검증·유효 전이 `_TRANSITIONS`(None→in-progress→additional-work↔·→done(verified 필수)→close-only) 강제, 잘못된 인자·무효 전이는 exit 2 거부; (4) `reconcile`이 열린 사이클 로그에서 인덱스 REBUILD(멱등·라이브 레코드 보존); (5) per-key 체크 3종(`keyed-record-on-dispatch`·`keyed-valid-status-transition`·`keyed-log-on-done`) — 각기 *이 키 파일만* 읽어 워커 격리; `evaluate()`가 ctx(`log_dir`/`state_dir`/`work_key`)를 체크에 전달(기존 두 체크도 ctx 수용); `_precondition_met`에 `keyed-state-dir` 추가; `INVARIANTS_CONTRACT="v2"` 상수. **템플릿(`invariants.template.yaml`)**: 키드 3종 추가(tier=warn·`requires:[local-log-layer, keyed-state-dir]`·per-key 스코프), 파일럿 `cycle-must-log` 유지(공존), 계약 헤더 v1→v2. **SETTER S8.8**: (0) `dlc-meta/.gitignore`에 `.aidlc-state/` 추가, (2.5) 키드 배선 절(state_dir 생성·키 프로비저닝 두 경로[디스패처 런치 env / 로컬 set-active 포인터]·write-helper 가용성·reconcile), (5) 게이트 키드 픽스처 K, 파일트리·S9 항목 17·provenance 헤더 v2. **구현 중 해소한 3갭(§13.6 구현 노트)**: reconcile=서브커맨드(시작 훅 아님, CHECK 읽기전용 유지)·pointer-write=`set-active` 서브커맨드·log-carries-delegation-id=best-effort(로그에 `Delegation:` 있으면 사용, 없으면 cycle-id 폴백+`key_source` 표기, 데이터 미조작; CYCLE-LOG 필드 추가는 follow-up). **검증**: 컴포넌트 서브프로세스 테스트 30건 green(키 해석 우선순위·per-key 격리·write-helper atomic·유효/무효 전이 거부·reconcile REBUILD·키드 체크 발화/no-op·전역 공존·degraded no-op·cp949·block exit2 무회귀), `py_compile` clean, 양 파서(PyYAML·미니) 동일 4불변식. **Phase 3(block 승격)·오케스트레이터 라이프사이클 규율·CYCLE-LOG `Delegation:` 필드는 스코프 아웃(follow-up).**
 
 STEP-3 Phase 3(§13 — 키드 warn→block 승격 + 라이프사이클 규율 이식, **IMPLEMENTED · block · 계약 v2 유지**): Phase 2(키드 warn 공존)에서 검증된 per-key 스코핑 위에, 키드 3종을 **block**으로 승격했다(cross-work-item 부작용 0 — 각 체크가 *그 키의 상태 파일만* 읽어 워커 B가 워커 A 때문에 막히지 않으므로 block-safe). **템플릿(`invariants.template.yaml`)**: 키드 3종 `tier: warn→block`, 이벤트를 실효 AND per-key-safe 지점으로 재바인딩 — (a)`keyed-record-on-dispatch`=**PreToolUse deny**(PostToolUse에서 이동, 실행 전 차단), (b)`keyed-valid-status-transition`=**Stop block** 백스톱(PostToolUse 바인딩 제거 — 사후 block은 자문뿐; 권위 강제는 write-helper exit-2), (c)`keyed-log-on-done`=**Stop block**. 전역 `cycle-must-log`는 warn 유지. **계약 v2 유지**(체크 id·스키마·`emit()` 훅 JSON 형태 불변 — tier/event만 바뀐 정책 변경, 엔진이 이미 block 지원 — bump 안 함, 근거 명시). **엔진(`enforce.template.py`) 무수정** — `emit()`이 PreToolUse block→`permissionDecision:deny`+exit 0 / Stop block→`decision:block`+exit 2 / Stop 재진입 `stop_hook_active`→warn 강등을 이미 낸다(서브프로세스 실측 재확인). **오케스트레이터 룰북**: `ORCHESTRATOR-AGENT.md` 책임 **7-INV**(라이프사이클 규율 — 디스패치=record+set-active/env / 지상검증 후=transition(done은 verified 필수) / CLOSE=CYCLE-END→push→close / 시작=reconcile · 재귀 계층별 소유 · 중립) + 참조맵 항목, `ROUTING.md` **§6.4**(라우팅 단계별 write-helper 대응 표 + per-key 무부작용). **SETTER S8.8**: (2.5) tier·이벤트를 Phase 3 block으로 갱신·PreToolUse (a) 명시, (3)/(4) 훅 배선에 `PreToolUse` 항목 필수화(JSON 스니펫·note), (5) 게이트 픽스처 K를 PreToolUse **deny** positive fixture로 교체 + **K-ISO**(K1 deny·K2 allow 공존 = per-key 무부작용 실측) 추가, S9 항목 17 갱신. **검증(서브프로세스 실측)**: block-per-key 격리(K1 미기록→deny / K2 기록→allow, 동일 state-dir 공존), keyed-log-on-done Stop block(done-without-log→block+exit2 / 로그 있으면 no-op), 무효 전이 write-helper exit 2, 전역 `cycle-must-log` warn 무회귀, 실제 dlc-meta `_open_cycles` READ-ONLY 정합, Stop-block+`stop_hook_active` 강등, degraded(state_dir 부재)→no-op exit 0, cp949-safe, `py_compile` clean, 양 파서 YAML 파싱. **라이브 파이어 확정(§11.4 (d))·CYCLE-LOG `Delegation:` 필드·GC user-notify는 여전히 follow-up.**
+
+STEP-4(§14 — git 최신성 강제 + 적응형 지식 상담, **IMPLEMENTED · warn · 계약 v2 유지**): 두 적응형 능력을 추가했다. **(A) `repo-fresh-before-access`(§14)**: `feedback-pull-before-work`를 강제층으로 승격 — 원격 있는 레포를 이번 세션에 git pull 없이 읽/작업하려 하면 warn(reference-read + 작업 레포 양쪽). 판정은 `.git/FETCH_HEAD` mtime vs 세션 앵커 mtime(네트워크 없는 stat), per-repo·per-session 마커(`<state_dir>/reposcan-*`)로 세션당 레포당 1회. 훅은 pull을 대신 실행하지 않는다(옵션 A). 원격 없음·비레포·git 최신화 명령 자체는 SKIP(중립). 엔진에 체크+헬퍼(`_accessed_path`/`_find_git_root`/`_git_dir`/`_has_remote`/앵커·마커) 추가, `evaluate()`/`main()`이 `cwd`·`session_id`를 ctx로 전달. 템플릿에 불변식(PreToolUse·warn·`requires:[keyed-state-dir]`). **계약 v2 유지**(가산 — §14.5). **(B) 적응형 지식 상담(`knowledge.consult_mode`)**: S5.8 지식-원천 개념을 확장 — 지식 부족 시 내부 지식 원천을 *임팩트 범위 내 타깃 질의*로만 상담(벌크 로드 금지·토큰 절약). 필수 설정 `consult_mode`(`auto`=자동 상담 / `ask-once`=상담 전 1회 확인, **기본 `ask-once`**), 단일 원천=`dlc-meta/ORCHESTRATOR.md` 지식-원천 섹션(사용자가 오케스트레이터에 지시해 언제든 auto↔ask-once 변경). SETTER S5.8이 온보딩 시 설정(Q5.8.7), 지식 미비/미사용이면 SKIP(deferred 기록) + 후일 사용자가 지식 추가 지시 시 보수 모드로 규율·훅 배선(S0·S5.8 deferral 경로). 이 능력은 config·규율 — 엔진 체크 불필요(순수 룰북+SETTER+ORCHESTRATOR.template). **검증**: 엔진 서브프로세스 실측(최신성 (i)stale→warn / (ii)마커·FETCH_HEAD 후 no-op / (iii)원격 없음 SKIP / (iv)비레포·degraded no-op / (v)`py_compile` / (vi)양 파서 tier=warn 동일), 키드 block 무회귀(deny + per-key 격리), 컨피그 정합(consult_mode auto/ask-once·기본 ask-once·deferral 존재).
 
 향후 변경은 깃 PR/머지 (원칙 8).

@@ -9,6 +9,11 @@
 INVARIANTS-CONTRACT: v2
   (v1 → v2 — 키드(keyed) per-work-item 상태머신 체크 3종 추가로 *체크 id 집합*이 바뀌었다.
    specs/INVARIANT-ENFORCEMENT.md §13.6-8. 계약 값은 이 상수와 템플릿 헤더가 짝을 이룬다.)
+  (v2 유지 — repo-fresh-before-access 체크 1종 추가. 순수 *가산(additive)*이라 계약을 올리지
+   않는다: 기존 체크·emit() 훅 JSON 형태·레코드 스키마 불변이고, 새 선결 조건 없이 기존
+   keyed-state-dir 를 재사용하며, 세션 마커(reposcan-*)는 키드 work-item 레코드와 별개 네임스페이스다.
+   미지원 체크 id 는 엔진이 조용히 no-op 스킵하므로 신·구 엔진↔yaml 혼용도 안전(degraded-safe).
+   specs/INVARIANT-ENFORCEMENT.md §14.)
 
 설계 원칙
   - 중립(agnostic): 특정 트래커·프로젝트·회사·스택을 무참조. 읽는 것은 *로컬 파일 계층뿐*
@@ -71,6 +76,7 @@ YAML 파싱 결정 (요구됨)
 """
 
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -602,6 +608,179 @@ def check_keyed_log_on_done(ctx):
     return (False, "")
 
 
+# --- (repo-fresh-before-access) git 최신성 체크 (§14) — "이 레포를 이번 세션에 pull 없이
+#     읽/작업하려는가"를 *네트워크 없이* 판정한다. 원격 있는 레포에만 적용(원격 없음 → SKIP,
+#     agnostic·중립). fresh = .git/FETCH_HEAD mtime >= 세션 앵커 mtime. per-repo·per-session
+#     마커(reposcan-*)로 세션당 레포당 1회만 발동(매 접근마다가 아님) — stat 기반이라 값싸다.
+#     이 체크는 키드 work-item 레코드(§13.4 write-helper 단일 원천)를 건드리지 않고, 자기 전용
+#     ephemeral 세션 마커만 쓴다 — 그 마커는 언제 휘발해도 안전(state_dir 은 gitignore·재생성 가능).
+_FRESH_PATH_KEYS = ("file_path", "path", "notebook_path", "filePath")
+_GIT_REFRESH_RE = re.compile(r"\bgit\b[^\n;&|]*\b(?:pull|fetch|clone|remote\s+update)\b", re.I)
+
+
+def _touch(path):
+    """빈 파일을 만들고(없으면) mtime 을 지금으로 갱신한다. degraded-safe: 호출부가 try 로 감싼다."""
+    d = os.path.dirname(path) or "."
+    os.makedirs(d, exist_ok=True)
+    with open(path, "a", encoding="utf-8"):
+        pass
+    os.utime(path, None)
+
+
+def _accessed_path(ctx):
+    """접근 대상 경로를 유도한다. 파일-경로 도구(Read/Edit/Grep 등)는 tool_input 의 경로 키를,
+    그 외(Bash/PowerShell 등)는 cwd 를 쓴다. 상대경로는 cwd 기준 절대화. 없으면 None."""
+    ti = ctx.get("tool_input") or {}
+    cand = None
+    if isinstance(ti, dict):
+        for k in _FRESH_PATH_KEYS:
+            v = ti.get(k)
+            if isinstance(v, str) and v.strip():
+                cand = v.strip()
+                break
+    cwd = ctx.get("cwd")
+    if not cand:
+        cand = cwd
+    if not cand:
+        return None
+    try:
+        if not os.path.isabs(cand) and cwd:
+            cand = os.path.join(cwd, cand)
+        return os.path.abspath(cand)
+    except Exception:
+        return cand
+
+
+def _find_git_root(path):
+    """path 에서 위로 올라가며 .git(디렉토리 또는 파일)을 가진 첫 조상을 반환. 없으면 None."""
+    if not path:
+        return None
+    try:
+        cur = path if os.path.isdir(path) else os.path.dirname(path)
+    except Exception:
+        return None
+    seen = 0
+    while cur and seen < 256:
+        try:
+            if os.path.exists(os.path.join(cur, ".git")):
+                return cur
+        except Exception:
+            return None
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+        seen += 1
+    return None
+
+
+def _git_dir(git_root):
+    """git_root/.git 를 실제 gitdir 로 해소한다(.git 이 파일이면 'gitdir:' 참조 — worktree/submodule)."""
+    gp = os.path.join(git_root, ".git")
+    try:
+        if os.path.isdir(gp):
+            return gp
+        if os.path.isfile(gp):
+            for line in (_read_text(gp) or "").splitlines():
+                line = line.strip()
+                if line.startswith("gitdir:"):
+                    ref = line[len("gitdir:"):].strip()
+                    if ref:
+                        return ref if os.path.isabs(ref) else os.path.abspath(os.path.join(git_root, ref))
+    except Exception:
+        return None
+    return None
+
+
+def _has_remote(git_dir):
+    """원격이 하나라도 설정돼 있으면 True. .git/config 의 [remote "..."] 우선, 폴백 refs/remotes.
+    읽기 실패·무원격 → False (→ SKIP, agnostic — 로컬 전용 레포는 강제 대상 아님)."""
+    if not git_dir:
+        return False
+    cfg = _read_text(os.path.join(git_dir, "config"))
+    if cfg and re.search(r'(?m)^\s*\[\s*remote\s+"', cfg):
+        return True
+    try:
+        rr = os.path.join(git_dir, "refs", "remotes")
+        if os.path.isdir(rr) and os.listdir(rr):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _repo_marker_token(git_root):
+    try:
+        norm = os.path.normcase(os.path.abspath(git_root))
+    except Exception:
+        norm = str(git_root)
+    return hashlib.sha1(norm.encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def _fresh_session_token(ctx):
+    return _sanitize_key(ctx.get("session_id")) or "nosession"
+
+
+def _fresh_anchor_mtime(state_dir, sid_tok):
+    """세션 앵커 mtime(≈세션 시작)을 반환한다. 없으면 지금 생성(첫 매치 도구 실행 ≈ 세션 시작)한다.
+    실패하면 None → 판정 보류(오탐 방지). 앵커는 refresh 명령/스킵보다 먼저 확보돼야
+    'pull 후 read'가 새 FETCH_HEAD(앵커 이후 mtime)로 fresh 판정된다."""
+    path = os.path.join(state_dir, "reposcan-" + sid_tok + ".anchor")
+    try:
+        if not os.path.exists(path):
+            _touch(path)
+        return os.path.getmtime(path)
+    except Exception:
+        return None
+
+
+def check_repo_fresh_before_access(ctx):
+    """(repo-fresh-before-access §14) 원격 있는 레포를 이번 세션에 git pull 없이 읽/작업하려 하면 위반.
+    fresh = .git/FETCH_HEAD mtime >= 세션 앵커 mtime(≈세션 시작). 원격 없음·비레포·앵커 불가·
+    한 번도 fetch 안 됨(FETCH_HEAD 부재=stale) 등은 아래대로 처리. per-repo·per-session 마커로
+    세션당 레포당 1회만 발동한다(매 접근마다가 아님). 훅은 pull 을 대신 실행하지 않고 최신성만 검사한다."""
+    state_dir = ctx.get("state_dir")
+    if not state_dir:
+        return (False, "")  # dedup 불가 → no-op (requires: keyed-state-dir 로도 걸러짐, degraded-safe)
+    # 세션 앵커를 *가장 먼저* 확보(refresh 명령/스킵보다 앞) — 'pull 후 read'의 fresh 판정 보장.
+    sid_tok = _fresh_session_token(ctx)
+    anchor = _fresh_anchor_mtime(state_dir, sid_tok)
+    root = _find_git_root(_accessed_path(ctx))
+    if not root:
+        return (False, "")  # 비-레포 경로 → SKIP
+    # git 최신화 자체(pull/fetch/clone/remote update)는 최신화 행위이므로 SKIP(마커도 안 남긴다 —
+    # 뒤이은 실제 접근이 갱신된 FETCH_HEAD 로 fresh 판정되게 둔다).
+    ti = ctx.get("tool_input") or {}
+    cmd = ti.get("command") if isinstance(ti, dict) else None
+    if isinstance(cmd, str) and _GIT_REFRESH_RE.search(cmd):
+        return (False, "")
+    gd = _git_dir(root)
+    if not _has_remote(gd):
+        return (False, "")  # 원격 없음 → SKIP (중립/agnostic)
+    fired = os.path.join(state_dir, "reposcan-" + sid_tok + "-" + _repo_marker_token(root))
+    if os.path.exists(fired):
+        return (False, "")  # 이번 세션에 이미 발동 — 세션당 레포당 1회
+    if anchor is None:
+        return (False, "")  # 앵커 확보 실패 → 판정 보류(오탐 방지)
+    fresh = False
+    try:
+        fh = os.path.join(gd, "FETCH_HEAD")  # 한 번도 fetch 안 됐으면 부재 → stale(=pull 필요, 취지대로)
+        if os.path.isfile(fh) and os.path.getmtime(fh) >= anchor:
+            fresh = True
+    except Exception:
+        fresh = False
+    try:
+        _touch(fired)  # 세션당 레포당 1회 보장(판정 후 마커 — fresh든 stale이든 이번 세션엔 재발동 안 함)
+    except Exception:
+        pass
+    if fresh:
+        return (False, "")
+    name = os.path.basename(root.rstrip("/\\")) or root
+    return (True, "레포 '%s'를 이번 세션에 git pull(최신화) 없이 접근하려 합니다 — 참조·작업 전에 "
+                  "`git fetch && git pull`로 먼저 최신화하세요 (feedback-pull-before-work / "
+                  "specs/INVARIANT-ENFORCEMENT.md §14). 훅은 pull 을 대신 실행하지 않고 최신성만 검사합니다." % name)
+
+
 CHECKS = {
     # 전역 파일럿 (v1 — 유지)
     "open-cycle-record-exists": check_open_cycle_record_exists,
@@ -610,6 +789,8 @@ CHECKS = {
     "keyed-record-on-dispatch": check_keyed_record_on_dispatch,
     "keyed-valid-status-transition": check_keyed_valid_status_transition,
     "keyed-log-on-done": check_keyed_log_on_done,
+    # git 최신성 (v2 가산 — §14)
+    "repo-fresh-before-access": check_repo_fresh_before_access,
 }
 
 
@@ -659,10 +840,13 @@ def _match_tool(globs, tool_name, tool_input):
     return False
 
 
-def evaluate(event, tool_name, tool_input, invariants, log_dir, state_dir=None, work_key=None):
+def evaluate(event, tool_name, tool_input, invariants, log_dir, state_dir=None, work_key=None,
+             cwd=None, session_id=None):
     """위반된 (tier, message) 목록 반환. 체크에 넘길 컨텍스트(ctx)를 한 번 구성해 전달한다
-    (§13.6-6 — 전역 체크와 키드 체크가 같은 ctx 를 받는다)."""
-    ctx = {"log_dir": log_dir, "state_dir": state_dir, "work_key": work_key}
+    (§13.6-6 — 전역 체크와 키드 체크가 같은 ctx 를 받는다). §14 최신성 체크가 tool_input·cwd·
+    session_id 를 쓰므로 ctx 에 함께 싣는다(기존 체크는 여분 키를 무시한다 — 무회귀)."""
+    ctx = {"log_dir": log_dir, "state_dir": state_dir, "work_key": work_key,
+           "tool_name": tool_name, "tool_input": tool_input, "cwd": cwd, "session_id": session_id}
     findings = []
     for inv in invariants:
         if not _requires_met(inv, ctx):
@@ -1079,6 +1263,8 @@ def main(argv=None):
     tool_input = (data.get("tool_input") if isinstance(data, dict) else None) or {}
     # session_id 는 키가 아니라 active-포인터 조회 핸들이다(§13.2). 없어도 degraded-safe.
     session_id = data.get("session_id") if isinstance(data, dict) else None
+    # cwd 는 §14 최신성 체크가 파일 경로 없는 도구(Bash/PowerShell)의 접근 레포를 유도할 때 쓴다.
+    cwd = data.get("cwd") if isinstance(data, dict) else None
     # 키 해석: --work-key/AIDLC_WORK_KEY > active-포인터 > 없음(키드 체크 no-op).
     work_key = _resolve_work_key(_parse_opt(argv, "work-key"), state_dir, session_id)
     # Stop-block 무한루프 가드용 신호 — 재진입한 Stop 훅이면 하네스가 true 로 실어 준다.
@@ -1087,7 +1273,8 @@ def main(argv=None):
     code = 0
     try:
         invs = load_invariants(invariants_dir)
-        findings = evaluate(event, tool_name, tool_input, invs, log_dir, state_dir, work_key)
+        findings = evaluate(event, tool_name, tool_input, invs, log_dir, state_dir, work_key,
+                            cwd, session_id)
         out, code = emit(event, findings, stop_hook_active)
     except Exception:
         out, code = None, 0  # 무엇이 어긋나도 조용히 통과 (EX-15 / C FALLBACK)

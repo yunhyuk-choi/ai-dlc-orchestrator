@@ -19,6 +19,9 @@
 #   ⚠️ Phase 2→3 (키드 3종 tier warn→block, 이벤트 재바인딩)은 **계약을 올리지 않는다** — 체크 id
 #      집합·스키마·훅 JSON 형태(emit())가 그대로이고 오직 tier/event 값만 바뀐 *정책* 변경이라
 #      엔진(v2)이 이미 block 을 지원한다. 그래서 계약은 v2 유지 (specs/INVARIANT-ENFORCEMENT.md §13.7).
+#   ⚠️ repo-fresh-before-access(§14) 추가도 **계약 v2 유지** — 순수 가산(additive)이다: 기존 체크·
+#      emit() 훅 JSON·레코드 스키마 불변, 새 선결 조건 없이 기존 keyed-state-dir 재사용, 미지원 체크
+#      id 는 엔진이 no-op 스킵하므로 신·구 혼용도 안전. 근거는 specs/INVARIANT-ENFORCEMENT.md §14.
 #
 # ── 불변식 1개 스키마 ──────────────────────────────────────────────────────
 #   id              : 안정적 kebab-case 식별자. *병합 키*. (필수)
@@ -81,6 +84,14 @@
 #                                    없이 done(verified != true)이거나 status가 유효 집합 밖이면 위반.
 #   keyed-log-on-done             : (Stop — block) 이 키가 done인데 대응 CYCLE-END 로그 흔적이 없거나,
 #                                    아직 in-progress/additional-work인 채 턴 경계를 넘기면 위반. Phase 3.
+#   [git 최신성 — v2 가산 · §14]
+#   repo-fresh-before-access      : (PreToolUse — warn) 원격이 있는 레포를 이번 세션에 git pull(최신화)
+#                                    없이 읽/작업하려 하면 위반. fresh = .git/FETCH_HEAD mtime >= 세션
+#                                    앵커 mtime. 원격 없음·비레포·git 최신화 명령 자체는 SKIP(중립).
+#                                    per-repo·per-session 마커로 세션당 레포당 1회만 발동(매 접근마다 X).
+#                                    reference-read(타 레포 구현·문서 조회) + 작업 레포 *양쪽*을 커버.
+#                                    훅은 pull 을 대신 실행하지 않는다 — 최신성만 검사→warn. requires:
+#                                    keyed-state-dir(세션 마커 저장). feedback-pull-before-work 를 강제층으로 승격.
 #
 # ── PreToolUse block 바인딩 예시 (실행 전 진짜 차단이 필요한 block-tier) ──────────
 #   실행 전 도구를 실제로 막고 싶으면 tier: block + PreToolUse 바인딩을 쓴다. 형태:
@@ -176,6 +187,28 @@ invariants:
     bindings:
       - event: Stop
         check: keyed-log-on-done
+
+  # ── git 최신성 (repo-fresh-before-access · 범용·중립 — §14) ── warn (신규 도입, warn 먼저) ──
+  # feedback-pull-before-work 규율("착수·참조 전 모든 관련 레포 git pull")을 *모델의 자발적 준수*에서
+  #   *프로그램(훅) 검사*로 승격한다. reference-read(타 레포 구현·문서·정보 조회) + 작업 레포 *양쪽*을 커버.
+  # 설계 = 옵션 A: 검사 후 warn(→ 이후 단계에서 block 승격). 훅은 git pull 을 *대신 실행하지 않는다* —
+  #   FETCH_HEAD mtime 를 세션 앵커와 비교(값싼 stat, 네트워크 없음)해 stale 이면 경고만 하고, 실제
+  #   pull 은 에이전트가 한다. 원격 없는 레포는 SKIP(agnostic — 로컬 전용 레포는 강제 대상 아님).
+  # per-repo·per-session 마커(<state_dir>/reposcan-*)로 세션당 레포당 1회만 발동 → 매 Read 마다 뜨지 않음.
+  #   이 마커는 키드 work-item 레코드(§13.4)와 별개 네임스페이스이며 ephemeral·gitignore(휘발 안전).
+  # 키드 3종과 같은 롤아웃 규율로 **warn 먼저** 도입한다(라이브 소크 후 block 승격은 다음 단계 — §14).
+  #   PreToolUse warn 은 실행을 막지 않고 additionalContext/systemMessage 로 넛지한다(§11.4 (a)).
+  # match 는 레포 파일에 닿는 도구다 — SETTER 가 실제 하네스 도구명으로 적응(⑥ — 예시 placeholder).
+  - id: repo-fresh-before-access
+    concern: integrity
+    tier: warn                      # 신규 도입 — warn 먼저(block 승격은 라이브 소크 후, §14). 오탐이 작업을 막지 않는다.
+    personal-adjust: escalate-only  # 개인은 warn→block 승격만 허용
+    scope: local
+    requires: ["keyed-state-dir"]   # 세션/레포 마커 저장소. 없으면 조용히 SKIP(degraded-safe).
+    bindings:
+      - event: PreToolUse           # 접근 *전* 넛지 — reference-read/작업 양쪽을 접근 시점에 검사.
+        match: ["Read", "Grep", "Edit", "Bash", "PowerShell"]  # 레포 파일에 닿는 도구. SETTER 가 적응(⑥).
+        check: repo-fresh-before-access
 
   # <SLOT: project-adaptive invariants>
   # SETTER가 STEP 2에서 환경 특화(예: 트래커 결합) 불변식을 여기 짜 넣는다.
