@@ -18,15 +18,21 @@ YAML 파싱 결정 (요구됨)
     파싱하는 stdlib-only 미니 파서를 내장한다. 어느 경로든 파싱 실패 시 → 해당 파일을 None으로 보고
     조용히 건너뛴다(degraded no-op). 즉 *PyYAML은 의존이 아니다*.
 
-경로 바인딩 (STEP 2에서 SETTER가 확정)
-  - AIDLC_INVARIANTS_DIR : invariants.team.yaml / invariants.personal.yaml 이 있는 디렉토리
-                           (기본값: 이 스크립트가 놓인 디렉토리)
-  - AIDLC_LOG_DIR        : cycles/ 로컬 로그 계층을 담은 디렉토리 = 메타 레포 루트
-                           (기본값: 현재 작업 디렉토리)
-  STEP 2에서 SETTER는 훅 command에 이 env를 실어 실제 절대 경로를 바인딩한다.
+경로 바인딩 (STEP 2에서 SETTER가 확정) — CLI 인자 > env > 기본값
+  두 디렉토리는 §11.2.1 상 항상 같다(둘 다 dlc-meta 루트) — 그래서 --base-dir 하나로 둘 다 준다.
+  - --base-dir <abs>       : invariants.*.yaml 위치이자 cycles/ 로컬 로그 계층 루트 = dlc-meta.
+                             --invariants-dir / --log-dir 로 개별 지정도 가능(있으면 --base-dir보다 우선).
+  - (하위호환 폴백) env AIDLC_INVARIANTS_DIR / AIDLC_LOG_DIR — CLI 인자가 없을 때만.
+  - 기본값 : invariants dir = 이 스크립트가 놓인 디렉토리, log dir = 현재 작업 디렉토리.
+
+  ⚠️ 경로를 *CLI 인자*로 받는 이유 — Claude Code 훅 command 객체엔 `env` 필드가 없다.
+     공식 문서(code.claude.com/docs/en/hooks.md)상 인식되는 필드는 type·command·args·if·
+     timeout·statusMessage·shell·async·asyncRewake 뿐이고 env 는 없다 — 훅은 부모 프로세스의
+     env 를 상속할 뿐이다. 따라서 배포별 절대경로는 CLI 인자로 넘긴다: 셸 독립(cmd.exe/
+     powershell 의 VAR=x 문법에 의존하지 않음)·래퍼 파일 불필요·기본 셸이 무엇이든 동작.
 
 호출 규약
-  enforce.py --event {PostToolUse|Stop}   # 훅 JSON을 stdin으로 받음 (tool_name, tool_input, ...)
+  enforce.py --event {PreToolUse|PostToolUse|Stop} --base-dir <abs>   # 훅 JSON을 stdin으로 받음
 
 훅 JSON 계약 (Claude Code hook contract — 확정. 출처: code.claude.com/docs/en/hooks.md,
   v2.1.2xx, 2026-09-11 fetch)
@@ -439,7 +445,8 @@ def evaluate(event, tool_name, tool_input, invariants, log_dir):
         for b in _bindings(inv):
             if b.get("event") != event:
                 continue
-            if event == "PostToolUse":
+            if event in ("PostToolUse", "PreToolUse"):
+                # 두 이벤트 모두 tool_name/tool_input 를 실어 온다 → 도구 매치로 좁힌다.
                 if not _match_tool(b.get("match") or [], tool_name, tool_input):
                     continue
             fn = CHECKS.get(b.get("check"))
@@ -459,16 +466,26 @@ def evaluate(event, tool_name, tool_input, invariants, log_dir):
 # 7. 훅 JSON 계약 방출 (Claude Code hook contract — 확정. 출처: code.claude.com/
 #    docs/en/hooks.md, v2.1.2xx, 2026-09-11 fetch)
 # ---------------------------------------------------------------------------
-#   tier=block    → {"decision": "block", "reason": <msg>}  +  exit code 2
-#                    exit 2 가 신뢰 가능한 차단 채널이다 — exit 0 + decision:block 은
-#                    advisory 에 그칠 수 있다(특히 PostToolUse 는 사후 실행이라 차단이
-#                    자문에 그친다). 따라서 JSON 을 stdout 에 먼저 쓴 뒤 exit 2 로 나간다.
-#                    block 은 Stop·PreToolUse 에서 실효적이다.
+#   tier=block    → 이벤트별로 *실효 차단점*이 다르다:
+#                    PreToolUse : {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+#                                    "permissionDecision": "deny",
+#                                    "permissionDecisionReason": <msg>}} + exit 0.
+#                                 ← 도구 실행 *전* 을 실제로 막는 유일한 지점(진짜 강제).
+#                                   PreToolUse 는 구조화된 deny 가 권위 채널이다.
+#                    Stop       : {"decision": "block", "reason": <msg>}  +  exit code 2.
+#                                 ← stop 을 거부하고 reason 을 다음 턴에 되먹인다. exit 2 가
+#                                   신뢰 채널(exit 0 + decision:block 은 자문에 그칠 수 있음).
+#                    PostToolUse: 위 Stop 과 같은 형태로 나가나, 도구가 *이미 실행된 뒤*라
+#                                 이는 진짜 차단이 아니라 Claude 에 주입되는 *자문 피드백*이다.
+#                                 → PostToolUse 바인딩엔 block 을 켜지 말고 warn 을 쓴다(§11.4).
 #   tier=warn     → Stop:        {"systemMessage": <msg>}
 #                    PostToolUse: {"systemMessage": <msg>,
 #                                  "hookSpecificOutput": {"hookEventName": "PostToolUse",
 #                                                          "additionalContext": <msg>}}
-#                    (warn 두 형태는 cp949 콘솔·PYTHONIOENCODING 없이 크래시 없이 방출됨이
+#                    PreToolUse:  {"systemMessage": <msg>,
+#                                  "hookSpecificOutput": {"hookEventName": "PreToolUse",
+#                                                          "additionalContext": <msg>}}
+#                    (warn 형태는 cp949 콘솔·PYTHONIOENCODING 없이 크래시 없이 방출됨이
 #                     실측 확인됨 — INVARIANT-ENFORCEMENT §11.4.)
 #   tier=advisory → 출력 없음 (no-op) + exit 0
 #   여러 불변식이 동시에 걸리면 *최고 tier*로 집계한다.
@@ -492,12 +509,20 @@ def emit(event, findings, stop_hook_active=False):
     if top >= _TIER_ORDER["block"] and event == "Stop" and stop_hook_active:
         top = _TIER_ORDER["warn"]
     if top >= _TIER_ORDER["block"]:
+        if event == "PreToolUse":
+            # 실행 전 차단점 — 구조화된 deny 가 권위 채널(exit 0). 진짜 강제가 걸리는 유일한 지점.
+            return ({"hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": text,
+            }}, 0)
+        # Stop(차단) / PostToolUse(사후 자문) — decision:block + exit 2 가 신뢰 채널.
         return ({"decision": "block", "reason": text}, 2)
     if top == _TIER_ORDER["warn"]:
         out = {"systemMessage": text}
-        if event == "PostToolUse":
+        if event in ("PostToolUse", "PreToolUse"):
             out["hookSpecificOutput"] = {
-                "hookEventName": "PostToolUse",
+                "hookEventName": event,
                 "additionalContext": text,
             }
         return (out, 0)
@@ -528,33 +553,50 @@ def _emit_write(out):
 
 
 # ===========================================================================
-# 8. 경로 해석 (STEP 2에서 SETTER가 env로 바인딩)
+# 8. 경로 해석 — CLI 인자 > env(하위호환) > 기본값
+#    STEP 2에서 SETTER는 훅 command 문자열에 --base-dir(절대경로)로 바인딩한다.
+#    Claude Code 훅엔 env 필드가 없으므로(위 모듈 docstring 참조) CLI 가 1차 채널이고,
+#    env 는 부모 프로세스에 값이 있을 때를 위한 하위호환 폴백으로만 남는다.
 # ===========================================================================
-def _base_dir():
-    return os.environ.get("AIDLC_INVARIANTS_DIR") or os.path.dirname(os.path.abspath(__file__))
+def _resolve_invariants_dir(cli_val):
+    return (cli_val
+            or os.environ.get("AIDLC_INVARIANTS_DIR")
+            or os.path.dirname(os.path.abspath(__file__)))
 
 
-def _log_dir():
-    return os.environ.get("AIDLC_LOG_DIR") or os.getcwd()
+def _resolve_log_dir(cli_val):
+    return (cli_val
+            or os.environ.get("AIDLC_LOG_DIR")
+            or os.getcwd())
 
 
 # ===========================================================================
 # 9. CLI
 # ===========================================================================
-def _parse_event(argv):
+def _parse_opt(argv, name):
+    """--name value 또는 --name=value 형태에서 값을 뽑는다. 없으면 None."""
+    flag = "--" + name
     for i, a in enumerate(argv):
-        if a == "--event" and i + 1 < len(argv):
+        if a == flag and i + 1 < len(argv):
             return argv[i + 1]
-        if a.startswith("--event="):
+        if a.startswith(flag + "="):
             return a.split("=", 1)[1]
     return None
+
+
+def _parse_event(argv):
+    return _parse_opt(argv, "event")
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     event = _parse_event(argv)
-    if event not in ("PostToolUse", "Stop"):
+    if event not in ("PreToolUse", "PostToolUse", "Stop"):
         return 0  # 알 수 없는 이벤트 → no-op (degraded-safe)
+    # 경로 인자: --base-dir 하나로 둘 다, 또는 --invariants-dir/--log-dir 개별(개별이 우선).
+    base_dir_arg = _parse_opt(argv, "base-dir")
+    invariants_dir = _resolve_invariants_dir(_parse_opt(argv, "invariants-dir") or base_dir_arg)
+    log_dir = _resolve_log_dir(_parse_opt(argv, "log-dir") or base_dir_arg)
     # stdin의 훅 JSON 읽기 (없거나 깨져도 진행)
     raw = ""
     try:
@@ -578,8 +620,8 @@ def main(argv=None):
     stop_hook_active = bool(data.get("stop_hook_active")) if isinstance(data, dict) else False
     code = 0
     try:
-        invs = load_invariants(_base_dir())
-        findings = evaluate(event, tool_name, tool_input, invs, _log_dir())
+        invs = load_invariants(invariants_dir)
+        findings = evaluate(event, tool_name, tool_input, invs, log_dir)
         out, code = emit(event, findings, stop_hook_active)
     except Exception:
         out, code = None, 0  # 무엇이 어긋나도 조용히 통과 (EX-15 / C FALLBACK)

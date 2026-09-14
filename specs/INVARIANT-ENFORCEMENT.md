@@ -134,7 +134,7 @@ SELF-CHECK 훅(`templates/SELF-CHECK.template.md`)이 *정체성 재주입*에 �
 > **갱신 (STEP-2a)**: 아래 항목 1·2는 **`agents/SETTER.md` S8.8로 이식·배선 완료**됐다 — 설계(§11·§12)와 라이브 절차(SETTER.md S8.8)가 정합한다. 남은 STEP 2 잔여는 항목 3(block tier 라이브 파이어 — §11.4 (d), 새 세션/오케스트레이터 몫)과 항목 4(트래커 결합 슬롯 실제 채움 — 트래커 운영 배포에서만)이다.
 
 1. **SETTER 조립 단계** — `invariants.template.yaml`을 두 인스턴스(`invariants.team.yaml` 추적 / `invariants.personal.yaml` 개인·gitignore)로 렌더하고, `enforce.template.py`를 실행 위치에 배치. `.gitignore`에 개인 파일·백업 추가 확인. (선례: S8.7 자가점검 훅 설치, S8.5 `.env` 부트스트랩.)
-2. **훅 배선** — `{공유리포}/.claude/settings.local.json`에 `PostToolUse`·`Stop` 훅을 *병합*(덮어쓰기 금지)으로 추가하고, `AIDLC_INVARIANTS_DIR`·`AIDLC_LOG_DIR` env로 실제 절대 경로를 바인딩. OS·셸 적응은 S8.7 패턴 재사용.
+2. **훅 배선** — `{공유리포}/.claude/settings.local.json`에 `PostToolUse`·`Stop` 훅을 *병합*(덮어쓰기 금지)으로 추가하고, **`--base-dir` CLI 인자**로 실제 절대 경로를 바인딩(Claude Code 훅엔 `env` 필드가 없으므로 env로 바인딩하지 않는다 — §11.1.1). OS·셸 적응은 S8.7 패턴 재사용.
 3. **라이브 훅 계약 검증** — `emit()` JSON 형태를 실제 Claude Code 하네스에 대고 검증(POLICY-VERIFY 지상검증). 계약 불일치 시 `emit()` 매핑을 정정하고 `INVARIANTS-CONTRACT` 버전을 올린다.
 4. **트래커 결합 불변식 (어댑터 경유 슬롯 채움)** — `invariants.template.yaml`의 `<SLOT: project-adaptive invariants>`에 환경 특화 불변식을 SETTER가 짜 넣고, 필요한 새 체크·선결 조건(예: `issue-tracker-config`)을 어댑터(`specs/ISSUE-TRACKER-ADAPTER.md`)와 정합하게 엔진에 추가. **프레임워크 레포는 계속 중립** — 트래커 결합분은 SETTER 시점 인스턴스에만 존재한다.
 
@@ -187,10 +187,11 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 
 > ⚠️ **별개 이슈 플래그(건드리지 않음)**: 기존 SELF-CHECK 훅은 Windows에서 `powershell -NoProfile …`을 쓴다(S8.7 (2) 표). 그 명령은 **Mac/Linux엔 `powershell`이 없어 깨진다.** 그대로 베끼면 안 된다. 본 STEP 2에서 SELF-CHECK 훅은 수정 대상이 아니다 — *플래그만* 한다(그 훅의 OS 이식성은 별도 사이클에서 다룬다).
 
-- **권장 설계 — 훅이 Python을 직접 호출**: `<python 실행자> <enforce.py 절대경로> --event {PostToolUse|Stop}`.
+- **권장 설계 — 훅이 Python을 직접 호출 + 경로는 CLI 인자로**: `<python 실행자> <enforce.py 절대경로> --event {PreToolUse|PostToolUse|Stop} --base-dir <dlc-meta 절대경로>`.
+  - **배포별 절대경로는 `--base-dir` CLI 인자로 넘긴다 — `env` 필드가 아니다.** ⚠️ **Claude Code 훅 command 객체엔 `env` 필드가 없다**(공식 문서 인식 필드: `type`·`command`·`args`·`if`·`timeout`·`statusMessage`·`shell`·`async`·`asyncRewake` — env 없음; 훅은 부모 env를 상속할 뿐이라 command에 얹은 `env`는 *조용히 무시*된다). 종전 설계가 `env`로 `AIDLC_INVARIANTS_DIR`/`AIDLC_LOG_DIR`을 실었던 것은 **설치돼도 죽는(silently dead) 결함**이었다 — CLI 인자로 교체했다. `--base-dir` 하나가 두 경로를 모두 준다(§11.2.1 상 둘 다 `dlc-meta`; 필요 시 `--invariants-dir`/`--log-dir`로 개별 지정, `env`는 CLI 부재 시 하위호환 폴백으로만 남는다). CLI 인자는 **셸 독립**이라 인라인 `VAR=x`(cmd.exe/powershell에서 깨짐·문서의 인라인 형태는 `shell:"bash"` 요구)나 래퍼 파일 없이 어느 기본 셸에서든 동작한다.
   - 인코딩은 **enforce.py 내부에서 이미 UTF-8 강제**(stdout·stdin `reconfigure` + 선행 BOM 관용, TASK 1)하므로 **PowerShell UTF-8 래퍼가 불필요**하다 → 훅 명령이 OS 간 *거의 동일*하다. (대조: SELF-CHECK는 순수 텍스트 파일을 흘리느라 셸 인코딩에 노출돼 PowerShell 래퍼가 필요했다. 여기선 엔진이 자기 출력을 책임진다.)
-  - OS별로 SETTER가 고르는 것은 **python 실행자 이름·경로**(`python3` / `python` / 절대경로)와, 필요 시 셸 래핑뿐. **PowerShell 전용 명령은 쓰지 않는다.**
-  - **탐지는 추정하지 말고 실행해 확인한다**(S8.7 규율) — 고른 실행자로 `--event Stop`을 한 번 돌려 exit 0·무손상 출력을 실측.
+  - OS별로 SETTER가 고르는 것은 **python 실행자 이름·경로**(`python3` / `python` / 절대경로)뿐. **PowerShell 전용 명령은 쓰지 않는다.**
+  - **탐지는 추정하지 말고 실행해 확인한다**(S8.7 규율) — 고른 실행자로 `--event Stop --base-dir <dlc-meta>`를 한 번 돌려 exit 0·무손상 출력을 실측.
 - **degraded도 OS 공통**: 어느 OS든 훅을 못 걸면 같은 `.unavailable` 마커 + advisory 폴백.
 
 ### 11.2 합성 행동가이드 (응답 → 템플릿 채우기)
@@ -201,8 +202,8 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
    - **결정적 렌더(D2 — 라이브 정본: SETTER S8.8 (1) 레시피)**: *같은 인터뷰 답(③⑥②) + 같은 템플릿 버전 → 바이트 동일 team.yaml*이어야 한다. "SLOT을 비운다"·헤더 처리를 추측으로 메우면 런마다 산출이 갈려 POLICY-TEMPLATE-ADHERENCE를 어긴다. 규칙(요약): ⓐ 템플릿을 그대로 복사 → ⓑ 스키마-닥 헤더를 **고정 provenance 헤더**로 교체(`INVARIANTS-CONTRACT` 값은 템플릿에서 복사·하드코딩 금지, 예시 본문은 버림 — 정본은 템플릿) → ⓒ 끈 불변식 블록은 통째 삭제, 켠 것은 `tier`·`match`만 치환 → ⓓ **"SLOT을 비운다" = `# <SLOT…>`부터 `# <END SLOT…>`까지 마커 포함 전삭제**(트래커=예면 실제 불변식으로 치환) → ⓔ 말미 LF 하나. 전체 레시피·고정 헤더 텍스트는 SETTER S8.8 (1)이 정본.
 2. **트래커 결합 불변식(SLOT)** — ②가 예면 `<SLOT>…<END SLOT>` 자리에 트래커 결합 불변식을 짜 넣고 `requires: [local-log-layer, issue-tracker-config]`를 준다(체크·선결 조건은 어댑터가 제공 — `specs/ISSUE-TRACKER-ADAPTER.md`). ②가 아니오면 **SLOT을 비운다**(중립). *새 선결 조건 `issue-tracker-config`·새 체크 id는 엔진 `CHECKS`·`_precondition_met` 확장이며, 로컬 원천만 읽는 한 중립 유지.*
 3. **엔진 배치** — `enforce.template.py`를 인스턴스 실행 경로에 **`enforce.py`**로 사본 배치(개인·gitignore).
-4. **경로 바인딩** — 훅 command의 env로 `AIDLC_INVARIANTS_DIR`(team·personal yaml이 있는 디렉토리)·`AIDLC_LOG_DIR`(메타 레포 루트 = `cycles/`의 부모)를 실제 절대경로로 바인딩한다.
-5. **훅 병합** — `{공유리포}/.claude/settings.local.json`에 `PostToolUse`·`Stop` 훅을 **병합**(덮어쓰기 금지·기존 사용자 키 보존·`.bak` 백업)으로 추가한다. 명령은 §11.1.1 OS 적응(python 직접 호출·UTF-8은 엔진 내부 강제). PostToolUse 훅엔 ⑥의 도구명 집합을 반영한다.
+4. **경로 바인딩** — 훅 command 문자열의 **CLI 인자 `--base-dir <dlc-meta 절대경로>`**로 바인딩한다(team·personal yaml 위치이자 `cycles/`의 부모 = 두 경로 동일, §11.2.1). **`env` 필드를 쓰지 않는다** — Claude Code 훅엔 env 필드가 없어 무시된다(§11.1.1).
+5. **훅 병합** — `{공유리포}/.claude/settings.local.json`에 `PostToolUse`·`Stop` 훅을(block-tier가 실행 전 차단을 요구하면 `PreToolUse`도) **병합**(덮어쓰기 금지·기존 사용자 키 보존·`.bak` 백업)으로 추가한다. 명령은 §11.1.1 OS 적응(python 직접 호출 + `--base-dir` CLI·UTF-8은 엔진 내부 강제). PostToolUse/PreToolUse 훅엔 ⑥의 도구명 집합을 반영한다.
    - `match` 필터링은 엔진이 하지만, 하네스가 훅 레벨 `matcher`도 지원하면 도구 집합을 그쪽에도 반영해 불필요한 엔진 기동을 줄일 수 있다(선택).
 6. **개인 파일 시드** — ④와 **무관하게** 빈 `invariants.personal.yaml`(gitignore)을 시드한다.
 7. **degraded** — ①이 아니오면 5(와 4의 훅 부분)를 스킵하고 `.unavailable` 마커를 남긴다(EX-15 / C FALLBACK). team·personal 파일과 엔진 배치는 그대로 한다 — 훅 없이도 엔진은 수동/타 경로로 호출 가능하고, 강제는 advisory 등가로 남는다.
@@ -247,11 +248,19 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 - PostToolUse: `{"systemMessage": <msg>, "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": <msg>}}`
 - 두 형태 모두 cp949 콘솔·`PYTHONIOENCODING` 없이 **크래시 없이 exit 0**으로 방출됨이 실측 확인됨(한국어·em-dash 포함). 무발견/degraded 경로는 **빈 출력 + exit 0**도 확인. 계약 문서와 일치.
 
-**(b) block — 형태 확정 + 차단 채널은 exit 2**
+**(b) block — 이벤트별 실효 차단점 (block-tier semantics per event)**
 
-- 형태: `{"decision": "block", "reason": <msg>}`. 이는 **Stop**에서 그 stop을 거부하고 `reason`을 다음 턴에 되먹이는 올바른 형태다(문서 확인).
-- **단, exit code 2 가 신뢰 가능한 차단 채널이다.** `exit 0 + decision:block`은 *자문(advisory)에 그칠 수 있다* — 특히 **PostToolUse는 사후 실행**이라 그 시점의 block은 도구 실행을 되돌리지 못한다. 따라서 엔진은 **block JSON을 stdout에 먼저 쓴 뒤 exit 2**로 나간다(§엔진 §7·TASK 1 실측: block tier → exit 2 + JSON, 확인됨).
-- **block은 Stop·PreToolUse에서 실효적이다.** **PostToolUse는 사후 실행이므로 block을 켜지 말고 warn으로 둔다**(파일럿 `cycle-must-log`의 PostToolUse 바인딩이 기본 warn인 이유).
+`tier: block`이 *어디서 실제로 막는지*는 이벤트마다 다르다. 엔진(`emit()`)이 이벤트별로 형태를 달리 낸다:
+
+| 이벤트 | block 시 엔진 방출 | 실효 | 켜도 되나 |
+|---|---|---|---|
+| **PreToolUse** | `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":<msg>}}` + exit 0 | **진짜 차단** — 도구 실행 *전* 을 막는 유일한 지점(강제성의 실체) | ✅ (실행 전 차단이 필요한 block-tier의 권장 지점) |
+| **Stop** | `{"decision":"block","reason":<msg>}` + **exit 2** | **진짜 차단** — 턴 종료(stop)를 거부하고 `reason`을 다음 턴에 되먹임 | ✅ (턴 경계 백스톱) |
+| **PostToolUse** | `{"decision":"block","reason":<msg>}` + exit 2 | **자문뿐** — 도구가 *이미 실행된 뒤*라 되돌리지 못하고, exit 2는 Claude에 주입되는 피드백에 그침 | ⚠️ 켜지 말 것 → warn 사용 |
+
+- **exit code 2 가 Stop·PostToolUse의 신뢰 채널이다** — `exit 0 + decision:block`은 자문에 그칠 수 있으므로 엔진은 block JSON을 stdout에 먼저 쓴 뒤 exit 2로 나간다. **PreToolUse는 구조화된 `permissionDecision:deny`가 권위 채널**이라 exit 0을 쓴다(§엔진 §7 실측 확인).
+- **PostToolUse는 사후 실행이므로 block을 켜지 말고 warn으로 둔다**(파일럿 `cycle-must-log`의 PostToolUse 바인딩이 기본 warn인 이유). 실행 전 진짜 차단이 필요하면 **PreToolUse에 바인딩**한다.
+- **PreToolUse는 엔진이 지원한다**(F4 구현 완료 — PostToolUse와 동일하게 `match`로 도구를 좁히고, PreToolUse는 재진입 루프가 없어 `stop_hook_active` 가드가 불필요하다. 서브프로세스 실측: PreToolUse+block → deny JSON+exit 0, PreToolUse+warn → systemMessage+additionalContext, no-match → 무발견, 확인됨).
 
 **(c) Stop-block 무한루프 가드 — `stop_hook_active`**
 
@@ -286,19 +295,20 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 
 **(2) 엔진 사본 + 개인 yaml 시드** (신규·합류·보수) — `enforce.template.py` → 인스턴스 `enforce.py`(개인·gitignore) 배치 + 빈 `invariants.personal.yaml`(개인·gitignore, ④ 무관하게) 시드.
 
-**(3) 훅 명령 생성 — OS 적응 (python 직접 호출)** — 인코딩은 엔진 내부가 강제하므로 **PowerShell 전용 래퍼 없음**(§11.1.1). 실행 환경을 탐지해 아래처럼 python 실행자만 OS별로 고른다:
+**(3) 훅 명령 생성 — OS 적응·자기완결 (python 직접 호출 + `--base-dir` CLI)** — 인코딩은 엔진 내부가 강제하므로 **PowerShell 전용 래퍼 없음**(§11.1.1). 배포별 절대경로는 **`--base-dir` CLI 인자**로 넘긴다(env 필드 아님 — Claude Code 훅엔 env 필드가 없다). 실행 환경을 탐지해 아래처럼 python 실행자만 OS별로 고른다:
 
 | 환경 | 명령 (형태) |
 |---|---|
-| POSIX (Linux·macOS·Git Bash·WSL) | `python3 "{enforce.py 절대경로}" --event {PostToolUse\|Stop}` |
-| Windows | `python "{enforce.py 절대경로}" --event {PostToolUse\|Stop}` (또는 절대경로 실행자) |
+| POSIX (Linux·macOS·Git Bash·WSL) | `python3 "{enforce.py 절대경로}" --event {PreToolUse\|PostToolUse\|Stop} --base-dir "{메타 레포}"` |
+| Windows | `python "{enforce.py 절대경로}" --event {PreToolUse\|PostToolUse\|Stop} --base-dir "{메타 레포}"` (또는 절대경로 실행자) |
 
-> **탐지는 실행해서 확인**한다 — 고른 실행자로 `--event Stop`을 한 번 돌려 exit 0·무손상을 실측(S8.7 규율). 실행자 이름·경로만 다르고 **명령 골격은 OS 공통**이다. 새 환경이 나오면 같은 원칙으로 후보를 추가하되 **공유 룰북에 OS를 하드코딩하지 않는다**(적응형 어댑터 규율).
+> **탐지는 실행해서 확인**한다 — 고른 실행자로 `--event Stop --base-dir "{메타 레포}"`를 한 번 돌려 exit 0·무손상을 실측(S8.7 규율). 실행자 이름·경로만 다르고 **명령 골격은 OS 공통·셸 독립**이다(인라인 `VAR=x` env 문법 없음). block tier는 실효 이벤트(PreToolUse·Stop)에만 바인딩(§11.4 (b)).
 
-**(4) 설정 병합** — `{공유리포}/.claude/settings.local.json`에 `PostToolUse`·`Stop` 훅을 **병합**(덮어쓰기 금지·기존 키 보존·`.bak` 백업). 각 훅 command에 (3) 명령 + env `AIDLC_INVARIANTS_DIR`·`AIDLC_LOG_DIR`(절대경로) 바인딩. PostToolUse는 ⑥ 도구명 집합을 `match`(및 지원 시 훅 `matcher`)에 반영. **중복 누적 금지**(같은 enforce.py를 가리키는 항목이 있으면 교체 — 보수 멱등성).
+**(4) 설정 병합** — `{공유리포}/.claude/settings.local.json`에 `PostToolUse`·`Stop`(block-tier면 `PreToolUse`도) 훅을 **병합**(덮어쓰기 금지·기존 키 보존·`.bak` 백업). 각 훅 command는 (3)의 **자기완결 명령 문자열**(경로는 `--base-dir` CLI)이다 — **`env` 필드를 쓰지 않는다**(Claude Code 훅에 없어 무시됨). PostToolUse/PreToolUse는 ⑥ 도구명 집합을 `match`(및 지원 시 훅 `matcher`)에 반영. **중복 누적 금지**(같은 enforce.py를 가리키는 항목이 있으면 교체 — 보수 멱등성).
 
 **(5) 합성 후 자가검증 게이트 (POLICY-VERIFY — 필수. 통과 전 성공 보고 금지 — failover 1)** — 클레임이 아니라 실측. 라이브 정본: SETTER S8.8 (5).
-- **1차 단언 = POSITIVE 픽스처(D1)**: 렌더+매치+env 로드를 증명하는 유일한 런은 warn을 *유발*하는 실행뿐이다. `--event PostToolUse` + `AIDLC_INVARIANTS_DIR`=실제 `{메타 레포}` + `AIDLC_LOG_DIR`=*빈* `cycles/`를 담은 임시 디렉토리 + ⑥ `match`가 걸리는 stdin으로 (3) 명령을 **직접 서브프로세스로** 돌려 **warn JSON 방출(비어있지 않음, exit 0)**을 확인한다. **빈 출력이면 FAIL** — degraded-safe 엔진은 *망가진 렌더(불변식 0개)에서도 빈 출력·exit 0*을 내므로 "무발견 런"만으로는 성공을 반증할 수 없다(D1 거짓통과). 2차로 Stop+빈 cycles(빈 출력) 및 PostToolUse+열린 cycle(빈 출력 = 판별) 확인.
+- **1차 단언 = POSITIVE 픽스처(D1) + 렌더 command 그대로 실행(D5)**: 렌더+매치+경로 바인딩(`--base-dir`)을 증명하는 유일한 런은 warn을 *유발*하는 실행뿐이다. **settings에 기록된 렌더 PostToolUse command 문자열을 그대로**(그 안의 `--base-dir "{메타 레포}"` 포함, env 필드 없음) 서브프로세스로 돌리되 **끝에 `--log-dir <빈 `cycles/` 임시 디렉토리>`만 덧붙이고**(라이브 오염 방지 — `--log-dir`이 `--base-dir`의 로그 부분을 이김, invariants는 실제 렌더에서 로드) + ⑥ `match` stdin으로 **warn JSON 방출(비어있지 않음, exit 0)**을 확인한다. *env를 손수 걸지 않는다* — 종전 게이트가 자기 env로 통과해 죽은 라이브 훅을 놓친 구조적 사각(D5·실측된 PR-blocking 결함)을 막는다. **빈 출력이면 FAIL**(D1 거짓통과 또는 D5 호출 형태 깨짐). 2차로 Stop+빈 cycles(빈 출력) 및 PostToolUse+열린 cycle(빈 출력 = 판별) 확인. **(조건부 F4)** PreToolUse block 바인딩을 렌더했으면 렌더 PreToolUse command + `--log-dir 빈 cycles` + 매치 stdin → deny JSON(exit 0) 단언(결정적 서브프로세스 단언이라 게이트 PASS 조건).
+- 기록된 훅 command에 **`env` 필드가 없고 경로가 `--base-dir`로** 실려 있는지 확인(D5 회귀 방어).
 - `settings.local.json`이 유효 JSON이고 기존 `UserPromptSubmit`·`permissions` 보존.
 - `{공유리포}`·`{메타 레포}`에서 개인 산출물이 추적되지 않는지(gitignore 정상), team yaml은 추적되는지 확인.
 - **block tier를 켰다면 라이브 파이어로 차단을 실측**(§11.4) — 확정 파이어는 새 세션 몫이라 게이트 PASS 조건은 아니다(게이트 1차 단언은 POSITIVE warn 방출). 미검증 시 `INVARIANTS-CONTRACT` 정정 대비.
@@ -326,5 +336,7 @@ STEP-2 보강(설계 프로즈 — SETTER.md 무수정): §11(인터뷰 6문항 
 STEP-2b(드라이런 결함 수정 + 안정성/failover 하드닝): 신규 사용자 여정 드라이런이 S8.8에서 낸 결함 4종을 수정하고, 합성이 *재현가능·멱등·자가검증·fail-safe* 하도록 보강했다. **D1**(검증 거짓통과 — degraded-safe 엔진의 망가진 렌더→빈 출력이 정상 무발견과 구분 불가): S9 항목 17·S8.8 (5)의 1차 단언을 **POSITIVE 픽스처**(PostToolUse + 빈 cycles + ⑥ 매치 → warn 방출)로 바꿔 렌더+매치+env 로드를 반증가능하게 만듦(빈 출력=FAIL). Stop-빈·열린-cycle은 2차. **D2**(렌더 알고리즘 부재 → 런마다 발산): S8.8 (1)에 결정적 렌더 레시피 고정(고정 provenance 헤더·`INVARIANTS-CONTRACT`는 템플릿에서 복사·끈 블록 전삭제·`tier`/`match`만 치환·"SLOT을 비운다"=마커 포함 전삭제·말미 LF 하나 → 같은 답=바이트 동일). **D3**(공유 `.gitignore` 커밋 미배정): 추가 줄은 추적 변경이므로 개인 산출물과 구분해 커밋(원칙 8) — 프레임워크 배포 `.gitignore`에 미리 실어 happy path는 no-op. **D4**: `.claude/__pycache__/` 제외 추가. **Failover**: (1) 합성 후 자가검증 **게이트** — P 통과 전 성공 보고 금지, 실패 시 라이브 훅 `.bak` 롤백 + degraded; (2) 멱등 — 훅 교체(append 금지)·개인 yaml seed-if-absent·엔진 사본 덮어쓰기 안전; (3) 훅-병합 안전 — 깨진 settings.local.json은 `.corrupt` 보존·보고·degraded, `UserPromptSubmit`/`permissions` 항상 보존; (4) degrade 경로 열거(훅-불가/no-python/dlc-meta 쓰기불가/템플릿 누락/게이트 실패 → 각기 이름 있는 결과·마커·보고). 엔진(`enforce.template.py`)은 무수정 — 컴포넌트 체크(block=exit2·Stop-guard 강등·degraded no-op·POSITIVE warn·판별 negative) 재실행 전부 green.
 
 STEP-2a(실제 배선): (1) **훅 계약 확정** — 공식 문서(`code.claude.com/docs/en/hooks.md`, v2.1.2xx, 2026-09-11 fetch) 대조로 §11.4를 확정. warn 형태 정합, **block은 exit code 2가 신뢰 가능한 차단 채널**(exit 0 + decision:block은 자문에 그칠 수 있음, 특히 PostToolUse 사후 실행), block은 Stop·PreToolUse에서 실효(PostToolUse는 warn 유지), **Stop-block 무한루프는 `stop_hook_active`로 가드**. (2) **엔진 반영** — `enforce.template.py` `emit()`/`main()`이 block tier → JSON + exit 2, Stop 재진입 시 block→warn 강등을 구현(서브프로세스 단위 검증: block→exit2+JSON / warn→exit0+JSON / 무발견·degraded→exit0+빈출력 / Stop+stop_hook_active→강등, 전부 통과). (3) **S8.8 이식** — §12 초안을 `agents/SETTER.md`에 라이브 절 S8.8로 이식(S8.7 (0)~(6) 미러, team=신규만·엔진/훅/개인=신규·합류·보수, 두 yaml co-locate §11.2.1, python 직접 호출 훅, S9 항목 17·파일트리·참조표 갱신). 잔여: block tier 라이브 파이어(새 세션/오케스트레이터).
+
+STEP-2c(라이브파이어 결함 수정 — env 필드 죽은 훅 + 게이트 사각 + PreToolUse): 잔여 라이브파이어가 드러낸 **PR-blocking 결함**을 수정했다. **F1**(env 필드 = silently dead): S8.8 (4)가 훅 command 객체의 `env` 필드로 `AIDLC_INVARIANTS_DIR`/`AIDLC_LOG_DIR`을 실었으나, **Claude Code 훅엔 `env` 필드가 없다**(공식 문서 인식 필드: type·command·args·if·timeout·statusMessage·shell·async·asyncRewake — env 없음, 훅은 부모 env 상속). env가 무시돼 `AIDLC_INVARIANTS_DIR`이 cwd 기본값→불변식 dir 못 찾음→exit 0 무강제로 **설치돼도 죽어 있었다.** 엔진에 CLI 인자 `--base-dir`(및 `--invariants-dir`/`--log-dir`) 추가(우선순위 CLI>env>기본; env는 하위호환 폴백), S8.8 (3)(4)·§11.1.1·§11.2·§12가 **`--base-dir` 자기완결·셸 독립** 명령으로 렌더하도록 개정(env 필드 삭제, 인라인 `VAR=x` 금지 — cmd.exe/powershell 비호환). **F2**(게이트 구조적 사각): (5) 게이트가 *자기가 env를 걸어* 서브프로세스를 돌려 죽은 라이브 훅을 놓쳤다(D5). 게이트를 **settings에 기록된 렌더 command 문자열 verbatim + `--log-dir`로 로그만 override**(env 미사용)로 바꿔, 호출 형태가 깨지면(env 재도입·경로 오류) FAIL하게 함. **F3**(block-tier 이벤트별 의미론): §11.4 (b)에 PreToolUse=실행 전 진짜 차단(deny) / Stop=턴 차단(exit 2) / PostToolUse=사후 자문뿐 표를 명시, S8.8·템플릿에 포인터. **F4**(PreToolUse 지원 — 구현): 엔진에 PreToolUse 이벤트 브랜치 추가(block→`permissionDecision:deny`+exit 0, warn→systemMessage+additionalContext, PostToolUse와 동일 `match`, 재진입 루프 없어 가드 불필요) — 실행 전 진짜 차단(강제성의 실체)을 제공. 템플릿에 PreToolUse 바인딩 옵션·게이트에 조건부 deny 픽스처 추가. 엔진 15개 서브프로세스 체크(F1 CLI·env폴백·block exit2·Stop guard 강등·cp949·match/no-match·degraded no-op·S1/S2 판별·PreToolUse deny/warn/no-fire) 전부 green.
 
 향후 변경은 깃 PR/머지 (원칙 8).

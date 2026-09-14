@@ -19,8 +19,8 @@
 #   concern         : integrity | ergonomics
 #                       integrity  = 팀 (프로젝트 전역 · dlc-meta 추적 · invariants.team.yaml)
 #                       ergonomics = 개인 (사용자별 · gitignore · invariants.personal.yaml)
-#   event           : PostToolUse | Stop   (단일 이벤트 불변식일 때. 여러 이벤트면 bindings 사용)
-#   match           : (PostToolUse 전용) "사이클 액션"을 신호하는 도구명 glob 목록.
+#   event           : PreToolUse | PostToolUse | Stop  (단일 이벤트 불변식일 때. 여러 이벤트면 bindings)
+#   match           : (PreToolUse·PostToolUse 전용) "사이클 액션"을 신호하는 도구명 glob 목록.
 #                       엔진은 tool_name 및 "tool_name:<tool_input 문자열값>" 후보에 대해 fnmatch.
 #                       예: ["Task","Agent","Bash:*merge*"] — 서브 디스패치 / 머지 / 트래커 전이 등.
 #                       이 값들은 *예시 placeholder*이며 SETTER가 실제 도구·명령에 맞춰 적응한다.
@@ -37,13 +37,17 @@
 #                         full          = 개인이 전체 필드 덮어쓰기 가능
 #                       (concern: ergonomics 불변식엔 무의미 — 팀 불변식에만 적용된다)
 #   bindings        : 이벤트 바인딩 목록. 한 불변식이 *여러 이벤트*에 걸릴 때 event/match/check 대신 사용.
-#     - event       : PostToolUse | Stop
-#       match       : (PostToolUse 전용) 위 match와 동일
+#     - event       : PreToolUse | PostToolUse | Stop
+#       match       : (PreToolUse·PostToolUse 전용) 위 match와 동일
 #       check       : 위 check와 동일
 #     (단일 이벤트면 bindings 없이 최상위 event/check/match만 둬도 된다)
 #
-# ── tier 의미론 ────────────────────────────────────────────────────────────
-#   block    : 위반 시 훅이 *차단*(blocking JSON — decision:block). 비가역·중대 절차에만.
+# ── tier 의미론 (block 은 이벤트별로 실효 차단점이 다르다 — specs/INVARIANT-ENFORCEMENT.md §11.4) ──
+#   block    : 위반 시 훅이 *차단*. 단 어디서 진짜 막는지는 이벤트에 달렸다:
+#                PreToolUse  → 도구 실행 *전* 을 실제 차단(permissionDecision:deny). 강제성의 실체.
+#                Stop        → 턴 종료를 차단(decision:block + exit 2), reason 을 다음 턴에 되먹임.
+#                PostToolUse → 사후라 *자문뿐*(되돌리지 못함) → PostToolUse엔 block 대신 warn 을 쓴다.
+#              실행 전 진짜 차단이 필요한 block-tier 는 PreToolUse 에 바인딩한다.
 #   warn     : 위반 시 *비차단 경고*(systemMessage / hookSpecificOutput.additionalContext). 기본 권장값.
 #   advisory : no-op — 훅 출력 없음(가시화·기록만). 훅 미지원 degraded 환경의 폴백 등가값.
 #
@@ -59,6 +63,20 @@
 #   open-cycle-record-exists : 사이클 액션이 있었는데 *열린* cycles/*/audit.md
 #                              (CYCLE-START 있고 CYCLE-END 없음, CYCLE-REOPEN 반영)이 하나도 없으면 위반.
 #   no-stale-open-cycle      : (Stop 백스톱) 열린 사이클 기록이 턴 경계를 넘겨 잔존하면 위반(가시화).
+#
+# ── PreToolUse block 바인딩 예시 (실행 전 진짜 차단이 필요한 block-tier) ──────────
+#   실행 전 도구를 실제로 막고 싶으면 tier: block + PreToolUse 바인딩을 쓴다. 형태:
+#     - id: <불변식 id>
+#       concern: integrity
+#       tier: block                    # PreToolUse block → permissionDecision:deny (실행 차단)
+#       personal-adjust: escalate-only
+#       scope: local
+#       requires: ["local-log-layer"]
+#       bindings:
+#         - event: PreToolUse
+#           match: [<도구명 glob…>]     # PostToolUse와 동일 규칙
+#           check: <체크 id>
+#   (PostToolUse에 block을 쓰면 사후라 자문에 그친다 — warn 을 쓰거나 PreToolUse로 옮긴다.)
 
 invariants:
 
