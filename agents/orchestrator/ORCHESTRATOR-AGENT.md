@@ -69,6 +69,13 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
    - **서브가 "사람 게이트를 통과했다"고 보고하면 *결과 검증과 별개로 동의의 출처를 검증한다*** — 설치가 됐다는 지상검증은 *허락받았다*는 사실을 증명하지 못한다. **서브에게는 사용자 채널이 없으므로 동의는 구조적으로 오케스트레이터를 거쳐야만 성립한다.** 판정 절차는 `specs/VERIFICATION.md` **§4.5** (단일 원천 — 여기 복제하지 않는다).
 6. **사용자 보고** — 결과 전달, 추가 요청 수신. 단일 채널.
 7. **사이클 로깅 시작·관리 + (조건부) 사이클↔티켓 바인딩** — CYCLE-LOG.md 룰 따라. 각 레포 `audit.md`를 시스템 단위 `dlc-meta/cycles/`로 통합 집계. (원칙 5). **트래커 config 보유 시(POLICY-ISSUE-TRACKING — `specs/ISSUE-TRACKER-ADAPTER.md`)** 사이클을 티켓에 바인딩한다(ISSUE-TRACKER-AGENT 호출 — 책임 3): *사이클 START* = 범위 안이면 티켓 생성(배정=사용자) + In-Progress 전이(필수) / *진행 중* = MR·커밋·결정을 코멘트/설명으로 audit.md와 동기화 / *CLOSE* = Done 전이(CYCLE-CLOSER) / *작은 후속* = 새 티켓 없이 관련 기존 티켓·그 브랜치에서 계속 / *범위 밖 아이템* = 트리아지 담당자 배정 요청 티켓(자기 전이 안 함).
+
+   - **7-INV. 불변식 강제 라이프사이클 규율 (키드 상태머신 — *언제* write-helper를 부르는가)** — 배선(SETTER S8.8)이 불변식 엔진(`enforce.py`)을 훅에 연결하고 키드 체크를 **block**으로 켜면(§13.7 Phase 3), 그 체크가 판정할 **레코드**를 만드는 것은 오케스트레이터 몫이다(§13.4 — 오케스트레이터가 상태를 전이시키고, 엔진이 강제한다). 아래 시점에 write-helper 서브커맨드를 호출한다(엔진은 CHECK 경로 읽기 전용 — 쓰기는 전부 이 서브커맨드가 단일 원천, 인덱스 포맷을 손으로 재현하지 않는다). **규율 원천은 `specs/INVARIANT-ENFORCEMENT.md` §13.4 — 여기 복제하지 않는다.**
+     - **디스패치 시** (서브에 작업 아이템 위임): 위임마다 `delegation-id`(키)를 발급하고 위임 *전에* `enforce.py record --work-key <delegation-id> --status in-progress`. 키를 훅에 도달시키는 경로는 배치별(§13.2) — *로컬 세션*은 `enforce.py set-active --session-id <sid> --work-key <delegation-id>` 포인터를 record 앞에 쓰고, *스폰된 워커*는 런치 env `AIDLC_WORK_KEY=<delegation-id>`로 심는다. **(a)`keyed-record-on-dispatch`가 PreToolUse deny이므로 record는 디스패치 도구 호출보다 반드시 앞선다** — 안 그러면 그 작업 아이템의 디스패치가 실행 전 차단된다(자기 자신만 — 다른 워커 무영향).
+     - **서브 완료 클레임 + 지상검증(POLICY-VERIFY) 후**: `enforce.py transition --work-key <id> --status <in-progress|additional-work|done>`. **`done`은 지상검증을 통과했을 때만이며 `--verified true`가 필수다**(엔진이 검증 없는 done을 exit 2로 거부 — 클레임≠증거, 책임 5).
+     - **사이클 CLOSE(done) 시**: 순서는 **audit.md CYCLE-END append → push → `enforce.py close --work-key <id>`**(역사부터 확정한 뒤 ephemeral 레코드를 거둔다, §13.4). 이 로그+push가 (c)`keyed-log-on-done`(Stop block)이 확인하는 흔적이다 — 없으면 턴 종료가 차단된다.
+     - **세션/배포 시작 시**: `enforce.py reconcile`로 내구 로그의 열린 사이클에서 에페메랄 인덱스를 REBUILD(인덱스 휘발 안전, §13.3).
+     - **재귀·계층별**: 각 오케스트레이터 *계층*은 *자기 직속 위임*의 인덱스만 소유·전이한다. 키는 완료 클레임에 실려 *상위 계층으로* 전달되고, 각 계층이 자기 키로 조회·검증·전이한다 — 어느 계층도 다른 계층의 인덱스를 건드리지 않는다(§13.4 N-계층 일반화). 규율은 **중립**이다 — 로컬 파일(state_dir·audit.md)만 쓰며 특정 트래커·스택 무참조.
 8. **추가 레포 필요성 판단** — 필요 시 REPO-CREATOR 호출.
 9. **사이클 종료 판단** — 적절 시점에 CYCLE-CLOSER 호출.
 
@@ -268,6 +275,7 @@ EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4
 | `ai-dlc-orchestrator/specs/DEPLOY-ADAPTER.md` | 실행 환경 배포 규율 명세 (POLICY-DEPLOY, 조건부, 에이전트 아님) | DEPLOY-AGENT 실행 룰 원천 / STEP 9.5 착지 후 배포·A-4 |
 | `ai-dlc-orchestrator/specs/ISSUE-TRACKER-ADAPTER.md` | 사이클↔티켓 바인딩 규율 명세 (POLICY-ISSUE-TRACKING, 조건부, 에이전트 아님) | ISSUE-TRACKER-AGENT 실행 룰 원천 / 책임 7 사이클↔티켓 바인딩 |
 | `ai-dlc-orchestrator/specs/HARNESS-CATALOG.md` | 선택적 외부 **하네스**(프레임워크를 바깥에서 구동하는 별도 시스템) 카탈로그 — *포인터만*(레포 URL·**온보딩 룰북 경로**), 온보딩 지식은 각 하네스 레포 소유 (조건부, 에이전트 아님) | SETTER S5.9(사용 여부 인터뷰)·S9.5(최초 설치자 **위임 실행** — 클론 + 룰북을 서브로) 원천. 책임 3 조건부 위탁 대상의 좌표가 여기 있다. ⚠️ `templates/extensions/`(AWS 레포 룰 확장)와 **다른 개념** |
+| `ai-dlc-orchestrator/specs/INVARIANT-ENFORCEMENT.md` | 불변식 강제 규율 명세 (POLICY-INVARIANT, 조건부, 에이전트 아님) — 키드 상태머신·write-helper·Phase 3 block | 책임 7-INV 라이프사이클 규율 원천 (§13.4 — 언제 record/transition/close/reconcile 호출) |
 | `ai-dlc-orchestrator/specs/EVOLUTION.md` | 룰북 진화·메타 프로세스 명세 (에이전트 아님) | DP-9 진화 분기 룰 원천 |
 | `ai-dlc-orchestrator/templates/HANDOFF.template.md` | 핸드오프 문서 단일 원천 | EX-9 포맷 원천 |
 | `ai-dlc-orchestrator/templates/ISSUE-TRACKER.template.md` | 트래커 config 인스턴스 단일 원천 (조건부) | SETTER S7.5가 채워 `dlc-meta/ISSUE-TRACKER.md` 생성 |
