@@ -6,12 +6,31 @@
 이 엔진을 훅에 배선하고, 두 선언 파일(invariants.team.yaml / invariants.personal.yaml)의
 실제 경로를 바인딩한다. 본 파일 자체는 프레임워크 레포에 그대로 산다 — 100% 중립.
 
+INVARIANTS-CONTRACT: v2
+  (v1 → v2 — 키드(keyed) per-work-item 상태머신 체크 3종 추가로 *체크 id 집합*이 바뀌었다.
+   specs/INVARIANT-ENFORCEMENT.md §13.6-8. 계약 값은 이 상수와 템플릿 헤더가 짝을 이룬다.)
+
 설계 원칙
-  - 중립(agnostic): 특정 트래커·프로젝트·회사·스택을 무참조. 읽는 것은 *로컬 로그 계층뿐*
-    (cycles/*/audit.md 의 CYCLE-START/CYCLE-END 스캔). 네트워크·트래커·프로젝트 상수 없음.
-  - degraded-safe: 선언 파일이 없거나·깨졌거나·PyYAML이 없거나·stdin이 비었거나 무엇이 어긋나도
-    *절대 크래시하지 않는다* — 아무것도 출력하지 않고 exit 0 (훅은 보강이지 전제가 아니다 — EX-15 / C FALLBACK).
+  - 중립(agnostic): 특정 트래커·프로젝트·회사·스택을 무참조. 읽는 것은 *로컬 파일 계층뿐*
+    (cycles/*/audit.md 의 CYCLE-START/CYCLE-END 스캔 + 로컬 ephemeral state_dir 인덱스).
+    네트워크·트래커·프로젝트 상수 없음. 표준 라이브러리(json·os·re·tempfile)만 쓴다.
+  - degraded-safe: 선언 파일이 없거나·깨졌거나·PyYAML이 없거나·stdin이 비었거나·키가 없거나·
+    state_dir가 없거나·레코드가 malformed거나 — 무엇이 어긋나도 CHECK 경로는 *절대 크래시하지
+    않고* 아무것도 출력하지 않고 exit 0 (훅은 보강이지 전제가 아니다 — EX-15 / C FALLBACK).
   - 얇은 적응형 훅 → 범용 엔진 → 2개 선언 원천. 관심사 분리 + personal-adjust 키.
+
+읽기/쓰기 경계 (§13.4 Q4=B — 확정)
+  - CHECK 경로(훅이 부르는 --event 경로)는 *읽기 전용*이다 — 상태 파일을 읽어 위반만 판정한다.
+  - 모든 *쓰기*(record / transition / close / set-active / reconcile)는 별도 **write-helper
+    서브커맨드**로 격리된다. 이 서브커맨드가 (i) atomic temp+rename, (ii) 스키마 검증,
+    (iii) 유효 전이 강제, (iv) 인덱스 포맷의 단일 원천을 담당한다. 디스패치한 오케스트레이터
+    계층이 이 서브커맨드를 호출한다(오케스트레이터가 인덱스 포맷을 손으로 재현하지 않는다).
+
+2층 상태 모델 (§13.3)
+  - 내구 진실 = 사이클 로그 dlc-meta/cycles/*/audit.md (git 추적·append-only). 크로스-머신
+    "일이 아직 열려 있나"의 단일 원천.
+  - 에페메랄 인덱스 = <state_dir>/<key>.json (gitignore·per-deployment·언제든 휘발 가능).
+    per-key 빠른 강제 인덱스. 세션/배포 시작 시 로그에서 REBUILD(reconcile)하므로 유실돼도 안전.
 
 YAML 파싱 결정 (요구됨)
   - PyYAML이 있으면 사용한다. *없어도* 동작한다 — 본 파일은 선언 템플릿이 쓰는 제한된 블록 서브셋을
@@ -19,10 +38,11 @@ YAML 파싱 결정 (요구됨)
     조용히 건너뛴다(degraded no-op). 즉 *PyYAML은 의존이 아니다*.
 
 경로 바인딩 (STEP 2에서 SETTER가 확정) — CLI 인자 > env > 기본값
-  두 디렉토리는 §11.2.1 상 항상 같다(둘 다 dlc-meta 루트) — 그래서 --base-dir 하나로 둘 다 준다.
+  두 선언 디렉토리는 §11.2.1 상 항상 같다(둘 다 dlc-meta 루트) — 그래서 --base-dir 하나로 준다.
   - --base-dir <abs>       : invariants.*.yaml 위치이자 cycles/ 로컬 로그 계층 루트 = dlc-meta.
                              --invariants-dir / --log-dir 로 개별 지정도 가능(있으면 --base-dir보다 우선).
-  - (하위호환 폴백) env AIDLC_INVARIANTS_DIR / AIDLC_LOG_DIR — CLI 인자가 없을 때만.
+  - --state-dir <abs>      : 키드 인덱스 디렉토리. 기본 <base-dir>/.aidlc-state (ephemeral·gitignore).
+  - (하위호환 폴백) env AIDLC_INVARIANTS_DIR / AIDLC_LOG_DIR / AIDLC_STATE_DIR / AIDLC_WORK_KEY.
   - 기본값 : invariants dir = 이 스크립트가 놓인 디렉토리, log dir = 현재 작업 디렉토리.
 
   ⚠️ 경로를 *CLI 인자*로 받는 이유 — Claude Code 훅 command 객체엔 `env` 필드가 없다.
@@ -32,7 +52,16 @@ YAML 파싱 결정 (요구됨)
      powershell 의 VAR=x 문법에 의존하지 않음)·래퍼 파일 불필요·기본 셸이 무엇이든 동작.
 
 호출 규약
-  enforce.py --event {PreToolUse|PostToolUse|Stop} --base-dir <abs>   # 훅 JSON을 stdin으로 받음
+  # CHECK 경로 (훅이 stdin으로 훅 JSON을 흘린다 — 읽기 전용)
+  enforce.py --event {PreToolUse|PostToolUse|Stop} --base-dir <abs> [--state-dir <abs>] [--work-key <k>]
+
+  # write-helper 서브커맨드 (오케스트레이터/디스패처 계층이 호출 — 유일한 쓰기 진입점)
+  enforce.py record     --work-key <k> [--status <s>] [--cycle-id <c>] [--delegation-id <d>]
+                        [--verified true|false] [--state-dir <abs>|--base-dir <abs>]
+  enforce.py transition --work-key <k> --status <s> [--verified true|false] [--state-dir|--base-dir]
+  enforce.py close      --work-key <k> [--state-dir|--base-dir]
+  enforce.py set-active --session-id <sid> --work-key <k> [--state-dir|--base-dir]
+  enforce.py reconcile  [--base-dir <abs>|--log-dir <abs>] [--state-dir <abs>]
 
 훅 JSON 계약 (Claude Code hook contract — 확정. 출처: code.claude.com/docs/en/hooks.md,
   v2.1.2xx, 2026-09-11 fetch)
@@ -46,6 +75,10 @@ import json
 import os
 import re
 import sys
+import tempfile
+
+# 계약 버전 — 템플릿 헤더의 INVARIANTS-CONTRACT 와 짝을 이룬다.
+INVARIANTS_CONTRACT = "v2"
 
 # ---------------------------------------------------------------------------
 # stdout UTF-8 강제 (시작 시) — degraded-safe 계약의 일부.
@@ -327,7 +360,7 @@ def load_invariants(base_dir):
 
 
 # ===========================================================================
-# 3. 로컬 로그 계층 판독 (유일하게 허용된 지상검증 원천 — 중립)
+# 3. 로컬 로그 계층 판독 (허용된 지상검증 원천 — 내구 진실, 중립)
 # ===========================================================================
 def _iter_audit_files(log_dir):
     cycles = os.path.join(log_dir, "cycles")
@@ -395,20 +428,119 @@ def _open_cycles(log_dir):
     return opens
 
 
+def _cycle_closed_in_log(log_dir, cycle_id):
+    """주어진 cycle_id 의 audit.md 가 로그에 있고 *닫힘*(마지막 상태 CYCLE-END)이면 True.
+    파일 부재·열림이면 False. keyed-log-on-done 이 done 레코드의 CYCLE-END 흔적을 확인할 때 쓴다."""
+    if not cycle_id or not log_dir:
+        return False
+    safe = os.path.basename(str(cycle_id))
+    txt = _read_text(os.path.join(log_dir, "cycles", safe, "audit.md"))
+    if txt is None:
+        return False
+    return not _cycle_is_open(txt)
+
+
 # ===========================================================================
-# 4. 명명된 체크 — (violation_bool, detail_str) 반환
+# 3.5 키드(keyed) 상태 인덱스 IO (§13.3) — ephemeral, per-key, 락 프리
+#      CHECK 경로에서 쓰는 것은 *읽기*(_read_state)뿐이다. 쓰기는 §6.5 write-helper.
 # ===========================================================================
-def check_open_cycle_record_exists(log_dir):
-    """사이클 액션이 있었는데 열린 사이클 기록이 하나도 없으면 위반."""
-    if _open_cycles(log_dir):
+def _now_iso():
+    try:
+        import datetime
+        return datetime.datetime.now().replace(microsecond=0).isoformat()
+    except Exception:
+        return ""
+
+
+def _sanitize_key(k):
+    """키·session_id 는 파일명 세그먼트가 되므로 안전화한다(§13.2) — 영숫자·`-`·`_`만 허용,
+    그 외는 `_`로 치환, 길이 상한 200. 부정 경로·구분자 주입 방지. None/빈값 → None."""
+    if k is None:
+        return None
+    s = str(k).strip()
+    if not s:
+        return None
+    s = re.sub(r"[^A-Za-z0-9_-]", "_", s)
+    return s[:200] if s else None
+
+
+def _state_path(state_dir, key):
+    return os.path.join(state_dir, key + ".json")
+
+
+def _read_state(state_dir, key):
+    """<state_dir>/<key>.json 을 읽어 dict 반환. 부재·malformed·키 없음 → None (degraded)."""
+    if not state_dir or not key:
+        return None
+    txt = _read_text(_state_path(state_dir, key))
+    if txt is None:
+        return None
+    try:
+        data = json.loads(txt)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _atomic_write(path, payload):
+    """temp+rename 원자적 쓰기 (같은 키의 self-갱신 원자성). state_dir 없으면 생성.
+    os.replace 는 같은 파일시스템에서 원자적이라 락 프리 동시성(서로 다른 워커=서로 다른 파일)."""
+    d = os.path.dirname(path) or "."
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.replace(tmp, path)  # 원자적
+    except Exception:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+        raise
+
+
+def _write_state(state_dir, key, rec):
+    _atomic_write(_state_path(state_dir, key), json.dumps(rec, ensure_ascii=False, indent=2) + "\n")
+
+
+def _read_active_pointer(state_dir, session_id):
+    """<state_dir>/active-<session_id> 를 읽어 현재 delegation-id(키)를 해소(§13.2).
+    파일 부재 = 포인터 없음(→ 다음 폴백). session_id 안전화 후 파일명 구성."""
+    sid = _sanitize_key(session_id)
+    if not sid or not state_dir:
+        return None
+    txt = _read_text(os.path.join(state_dir, "active-" + sid))
+    if txt is None:
+        return None
+    return txt.strip() or None
+
+
+# 상태값 + 유효 전이 (§13.4). None = 레코드 없음. done 은 terminal — close(삭제)로만 벗어난다.
+_VALID_STATUS = ("in-progress", "additional-work", "done")
+_TRANSITIONS = {
+    None: {"in-progress"},
+    "in-progress": {"in-progress", "additional-work", "done"},
+    "additional-work": {"additional-work", "in-progress", "done"},
+    "done": set(),
+}
+
+
+# ===========================================================================
+# 4. 명명된 체크 — 모두 ctx(dict: log_dir·state_dir·work_key)를 받아 (violation_bool, detail) 반환
+#     (§13.6-6 — 체크 시그니처를 컨텍스트 객체로 일반화. 기존 두 체크도 ctx 수용.)
+# ===========================================================================
+def check_open_cycle_record_exists(ctx):
+    """(전역·파일럿) 사이클 액션이 있었는데 열린 사이클 기록이 하나도 없으면 위반."""
+    if _open_cycles(ctx.get("log_dir")):
         return (False, "")
     return (True, "사이클 액션 감지 — 열린 cycles/*/audit.md 기록(CYCLE-START)이 없습니다. "
                    "사이클을 시작했으면 audit.md에 CYCLE-START를 append하세요 (specs/CYCLE-LOG.md).")
 
 
-def check_no_stale_open_cycle(log_dir):
-    """열린 사이클 기록이 턴 경계를 넘겨 잔존하면 위반(가시화)."""
-    opens = _open_cycles(log_dir)
+def check_no_stale_open_cycle(ctx):
+    """(전역·파일럿) 열린 사이클 기록이 턴 경계를 넘겨 잔존하면 위반(가시화)."""
+    opens = _open_cycles(ctx.get("log_dir"))
     if not opens:
         return (False, "")
     names = ", ".join(os.path.basename(os.path.dirname(p)) for p in opens)
@@ -416,31 +548,93 @@ def check_no_stale_open_cycle(log_dir):
                   " — 마무리됐으면 CYCLE-END를, 계속이면 그대로 두세요 (specs/CYCLE-LOG.md).")
 
 
+# --- 키드(keyed) per-work-item 체크 3종 (§13.5) — 각기 *이 키의 상태 파일만* 읽는다.
+#     → 워커 B는 워커 A의 상태에 영향받지 않음(동시성-안전) → block-tier 안전(Phase 3).
+#     키 없음·state_dir 없음·레코드 malformed → no-op(차단 아님, degraded-safe).
+def check_keyed_record_on_dispatch(ctx):
+    """(a) 디스패치했는데 이 키의 상태 레코드가 없으면 위반 — 위임했으면 상태를 기록하라."""
+    key = ctx.get("work_key")
+    if not key:
+        return (False, "")  # 키 없음 → no-op (degraded — 키 요구 체크는 조용히 스킵)
+    if _read_state(ctx.get("state_dir"), key) is None:
+        return (True, "디스패치 감지 — 작업 키 '%s'의 상태 레코드가 없습니다. "
+                      "`enforce.py record --work-key %s`로 in-progress를 기록하세요 "
+                      "(specs/INVARIANT-ENFORCEMENT.md §13.4)." % (key, key))
+    return (False, "")
+
+
+def check_keyed_valid_status_transition(ctx):
+    """(b) 이 키가 검증 없이 done이거나(verified != true) status가 유효 집합 밖이면 위반."""
+    key = ctx.get("work_key")
+    if not key:
+        return (False, "")
+    rec = _read_state(ctx.get("state_dir"), key)
+    if rec is None:
+        return (False, "")  # 레코드 없음은 (a)가 다룬다 — 여기선 무판정
+    status = rec.get("status")
+    if status == "done" and rec.get("verified") is not True:
+        return (True, "작업 키 '%s'가 검증 없이 done 상태입니다(verified != true). "
+                      "지상검증(POLICY-VERIFY) 후에만 done으로 전이하세요 (§13.4)." % key)
+    if status not in _VALID_STATUS:
+        return (True, "작업 키 '%s'의 status가 유효하지 않습니다: %r "
+                      "(허용: in-progress · additional-work · done)." % (key, status))
+    return (False, "")
+
+
+def check_keyed_log_on_done(ctx):
+    """(c) 이 키가 done인데 대응 CYCLE-END 로그 흔적이 없으면, 또는 아직 열린 채 턴 경계를
+    넘기면 위반. 각기 *이 키만* 보므로 A의 열림이 B의 Stop을 건드리지 않는다."""
+    key = ctx.get("work_key")
+    if not key:
+        return (False, "")
+    rec = _read_state(ctx.get("state_dir"), key)
+    if rec is None:
+        return (False, "")
+    status = rec.get("status")
+    if status == "done":
+        if _cycle_closed_in_log(ctx.get("log_dir"), rec.get("cycle_id")):
+            return (False, "")  # 로그에 CYCLE-END 있음 — 레코드가 아직 GC(close) 안 됐을 뿐
+        return (True, "작업 키 '%s'가 done인데 대응 CYCLE-END 로그 흔적이 없습니다. "
+                      "audit.md에 CYCLE-END를 append(+push)하고 레코드를 close하세요 (§13.4)." % key)
+    if status in ("in-progress", "additional-work"):
+        return (True, "작업 키 '%s'가 아직 %s 상태로 턴 경계를 넘겼습니다 — "
+                      "마무리면 done(+CYCLE-END), 계속이면 그대로 두세요 (§13.5)." % (key, status))
+    return (False, "")
+
+
 CHECKS = {
+    # 전역 파일럿 (v1 — 유지)
     "open-cycle-record-exists": check_open_cycle_record_exists,
     "no-stale-open-cycle": check_no_stale_open_cycle,
+    # 키드 per-work-item (v2 — 신규, §13.5)
+    "keyed-record-on-dispatch": check_keyed_record_on_dispatch,
+    "keyed-valid-status-transition": check_keyed_valid_status_transition,
+    "keyed-log-on-done": check_keyed_log_on_done,
 }
 
 
 # ===========================================================================
 # 5. 선결 조건 (requires) — 불충족이면 불변식 SKIP (중립 견고성)
 # ===========================================================================
-def _precondition_met(req, log_dir):
+def _precondition_met(req, ctx):
     if req == "local-log-layer":
-        return os.path.isdir(os.path.join(log_dir, "cycles"))
+        return os.path.isdir(os.path.join(ctx.get("log_dir") or "", "cycles"))
+    if req == "keyed-state-dir":
+        sd = ctx.get("state_dir")
+        return bool(sd) and os.path.isdir(sd)
     # 미지원 선결 조건(예: STEP 2 어댑터가 넣을 issue-tracker-config)은 불충족으로 간주 → SKIP
     return False
 
 
-def _requires_met(inv, log_dir):
+def _requires_met(inv, ctx):
     reqs = inv.get("requires") or []
     if not isinstance(reqs, list):
         return False
-    return all(_precondition_met(r, log_dir) for r in reqs)
+    return all(_precondition_met(r, ctx) for r in reqs)
 
 
 # ===========================================================================
-# 6. 평가
+# 6. 평가 (CHECK 경로 — 읽기 전용)
 # ===========================================================================
 def _bindings(inv):
     b = inv.get("bindings")
@@ -465,11 +659,13 @@ def _match_tool(globs, tool_name, tool_input):
     return False
 
 
-def evaluate(event, tool_name, tool_input, invariants, log_dir):
-    """위반된 (tier, message) 목록 반환."""
+def evaluate(event, tool_name, tool_input, invariants, log_dir, state_dir=None, work_key=None):
+    """위반된 (tier, message) 목록 반환. 체크에 넘길 컨텍스트(ctx)를 한 번 구성해 전달한다
+    (§13.6-6 — 전역 체크와 키드 체크가 같은 ctx 를 받는다)."""
+    ctx = {"log_dir": log_dir, "state_dir": state_dir, "work_key": work_key}
     findings = []
     for inv in invariants:
-        if not _requires_met(inv, log_dir):
+        if not _requires_met(inv, ctx):
             continue
         for b in _bindings(inv):
             if b.get("event") != event:
@@ -482,13 +678,218 @@ def evaluate(event, tool_name, tool_input, invariants, log_dir):
             if fn is None:
                 continue
             try:
-                violated, detail = fn(log_dir)
+                violated, detail = fn(ctx)
             except Exception:
                 continue
             if violated:
                 findings.append((inv.get("tier", "advisory"),
                                  "[invariant:%s] %s" % (inv.get("id", "?"), detail)))
     return findings
+
+
+# ===========================================================================
+# 6.5 write-helper 서브커맨드 (§13.4 Q4=B) — 유일한 쓰기 진입점.
+#      atomic temp+rename · 스키마 검증 · 유효 전이 강제 · 인덱스 포맷 단일 원천.
+#      디스패치한 오케스트레이터 계층이 호출한다. CHECK 경로(위)와는 진입점만 분리.
+#      반환 exit code: 0=성공, 2=거부(잘못된 인자·무효 전이·검증 없는 done), 1=예기치 못한 오류.
+# ===========================================================================
+def _sub_emit(ok, message, record=None, exit_code=0):
+    out = {"ok": ok, "message": message}
+    if record is not None:
+        out["record"] = record
+    _emit_write(out)
+    return exit_code
+
+
+def _apply_write(state_dir, key, status, fields, require_existing):
+    """record/transition 공통 — 스키마 검증 + 유효 전이 강제 + atomic 쓰기.
+    require_existing=True 면 기존 레코드가 있어야 한다(transition). fields: cycle_id·
+    delegation_id·verified·dispatched_at 중 주어진 것만 반영."""
+    key = _sanitize_key(key)
+    if not key:
+        return _sub_emit(False, "invalid or missing --work-key", exit_code=2)
+    if not state_dir:
+        return _sub_emit(False, "no state_dir resolved", exit_code=2)
+    existing = _read_state(state_dir, key)
+    if require_existing and existing is None:
+        return _sub_emit(False, "no existing record for key %r — record it first" % key, exit_code=2)
+    old_status = existing.get("status") if existing else None
+    status = status or (old_status if existing else "in-progress")
+    if status not in _VALID_STATUS:
+        return _sub_emit(False, "invalid status %r (allowed: %s)"
+                         % (status, ", ".join(_VALID_STATUS)), exit_code=2)
+    if status not in _TRANSITIONS.get(old_status, set()):
+        return _sub_emit(False, "invalid transition %r -> %r" % (old_status, status), exit_code=2)
+    rec = dict(existing) if existing else {}
+    rec["key"] = key
+    rec["status"] = status
+    if not rec.get("dispatched_at"):
+        rec["dispatched_at"] = fields.get("dispatched_at") or _now_iso()
+    for f in ("cycle_id", "delegation_id"):
+        if fields.get(f) is not None:
+            rec[f] = fields[f]
+    if fields.get("verified") is not None:
+        rec["verified"] = fields["verified"]
+    rec.setdefault("verified", False)
+    rec.setdefault("cycle_id", None)
+    rec.setdefault("delegation_id", None)
+    rec["updated_at"] = _now_iso()
+    # 검증 없는 done 금지 (§13.4 — 검증 없이 완료로 건너뛰지 마라).
+    if status == "done" and rec.get("verified") is not True:
+        return _sub_emit(False, "cannot transition to done without verified=true", exit_code=2)
+    try:
+        _write_state(state_dir, key, rec)
+    except Exception as e:
+        return _sub_emit(False, "write failed: %s" % e, exit_code=1)
+    return _sub_emit(True, "recorded %r status=%s" % (key, status), record=rec, exit_code=0)
+
+
+def _cmd_close(state_dir, key):
+    key = _sanitize_key(key)
+    if not key:
+        return _sub_emit(False, "invalid or missing --work-key", exit_code=2)
+    if not state_dir:
+        return _sub_emit(False, "no state_dir resolved", exit_code=2)
+    path = _state_path(state_dir, key)
+    try:
+        if os.path.isfile(path):
+            os.remove(path)
+            return _sub_emit(True, "closed(deleted) %r" % key, exit_code=0)
+        return _sub_emit(True, "no record for %r (already closed)" % key, exit_code=0)  # 멱등
+    except Exception as e:
+        return _sub_emit(False, "close failed: %s" % e, exit_code=1)
+
+
+def _cmd_set_active(state_dir, session_id, key):
+    """active-포인터 파일 쓰기 (§13.2 — 로컬 장수 오케스트레이터가 작업-시작마다 호출).
+    §13 결정(Q4=B와 정합): 포인터 쓰기도 write-helper 를 경유한다."""
+    sid = _sanitize_key(session_id)
+    key = _sanitize_key(key)
+    if not sid:
+        return _sub_emit(False, "invalid or missing --session-id", exit_code=2)
+    if not key:
+        return _sub_emit(False, "invalid or missing --work-key", exit_code=2)
+    if not state_dir:
+        return _sub_emit(False, "no state_dir resolved", exit_code=2)
+    try:
+        d = state_dir
+        os.makedirs(d, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-active-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(key + "\n")
+            os.replace(tmp, os.path.join(d, "active-" + sid))
+        except Exception:
+            try:
+                os.remove(tmp)
+            except Exception:
+                pass
+            raise
+    except Exception as e:
+        return _sub_emit(False, "set-active failed: %s" % e, exit_code=1)
+    return _sub_emit(True, "active pointer for session %r -> %r" % (sid, key), exit_code=0)
+
+
+# reconcile 이 로그에서 optional delegation-id 를 읽을 때 쓰는 패턴 (§13.6-5 GAP 대비 — 아래 설명).
+_DELEGATION_RE = re.compile(
+    r"(?im)^\s*(?:Delegation(?:-id)?|delegation[_-]?id|Work-key|work[_-]?key)\s*[:=]\s*(\S+)"
+)
+
+
+def _reconcile_from_log(state_dir, log_dir):
+    """세션/배포 시작 시 사이클 로그의 *열린* 사이클들로부터 에페메랄 인덱스를 REBUILD 한다
+    (§13.3 2층 모델·§13.6-5). 인덱스는 로그의 파생물이므로 지워져도(휘발) 안전 — 이 경로가
+    그 안전을 보장한다.
+
+    ⚠️ GAP (§13이 플래그한 'log-carries-delegation-id') — 현행 CYCLE-LOG.md 형식(specs/
+    CYCLE-LOG.md §5)의 CYCLE-START entry 는 오케스트레이터가 훅에 넘기는 *키(delegation-id)를
+    담지 않는다*. 따라서 로그만으로는 키를 완전 복원할 수 없다. best-effort:
+      - audit.md 에 `Delegation:` / `Work-key:` 줄이 *있으면* 그 값을 키로 쓴다(전방호환 —
+        CYCLE-LOG 가 이 필드를 채우기 시작하면 reconcile 이 완전해진다). 데이터를 지어내지 않는다.
+      - 없으면 cycle-id(디렉토리명)를 키로 삼는다(key_source="cycle-id"). 이 경우 라이브 훅이
+        delegation-id 로 해소하는 키와 *일치하지 않으므로*, reconcile 레코드는 "열린 일이
+        있다"는 가시성/백스톱 용도이지 라이브 키드 체크와 1:1 매칭되지는 않는다.
+    TODO(follow-up): CYCLE-LOG.md CYCLE-START 에 `Delegation:` 필드를 추가하면 이 갭이
+    닫힌다(스펙 §13 IMPLEMENTED 노트 참조). 그 전까지 cycle-id 폴백이 안전한 근사치다.
+
+    이미 존재하는 레코드는 덮지 않는다(멱등 — 라이브 레코드 보존). 새로 쓴 키 목록을 반환한다."""
+    written = []
+    if not state_dir or not log_dir:
+        return written
+    for p in _iter_audit_files(log_dir):
+        txt = _read_text(p)
+        if txt is None or not _cycle_is_open(txt):
+            continue
+        cycle_id = os.path.basename(os.path.dirname(p))
+        m = _DELEGATION_RE.search(txt)
+        raw_key = m.group(1) if m else cycle_id
+        key = _sanitize_key(raw_key)
+        if not key:
+            continue
+        if _read_state(state_dir, key) is not None:
+            continue  # 라이브 레코드 보존 (멱등)
+        now = _now_iso()
+        rec = {
+            "key": key,
+            "status": "in-progress",
+            "cycle_id": cycle_id,
+            "delegation_id": (m.group(1) if m else None),
+            "dispatched_at": now,
+            "verified": False,
+            "updated_at": now,
+            "reconciled": True,
+            "key_source": ("delegation-id" if m else "cycle-id"),
+        }
+        try:
+            _write_state(state_dir, key, rec)
+            written.append(key)
+        except Exception:
+            continue
+    return written
+
+
+def _run_subcommand(sub, argv):
+    base_dir_arg = _parse_opt(argv, "base-dir")
+    state_dir = _resolve_state_dir(_parse_opt(argv, "state-dir"), base_dir_arg)
+    key = _parse_opt(argv, "work-key")
+    try:
+        if sub == "record":
+            return _apply_write(state_dir, key,
+                                _parse_opt(argv, "status"),
+                                _collect_fields(argv), require_existing=False)
+        if sub == "transition":
+            return _apply_write(state_dir, key,
+                                _parse_opt(argv, "status"),
+                                _collect_fields(argv), require_existing=True)
+        if sub == "close":
+            return _cmd_close(state_dir, key)
+        if sub == "set-active":
+            return _cmd_set_active(state_dir, _parse_opt(argv, "session-id"), key)
+        if sub == "reconcile":
+            log_dir = _resolve_log_dir(_parse_opt(argv, "log-dir") or base_dir_arg)
+            written = _reconcile_from_log(state_dir, log_dir)
+            return _sub_emit(True, "reconciled %d open cycle(s) into index" % len(written),
+                             record={"keys": written}, exit_code=0)
+    except Exception as e:
+        return _sub_emit(False, "unexpected error: %s" % e, exit_code=1)
+    return _sub_emit(False, "unknown subcommand %r" % sub, exit_code=2)
+
+
+def _collect_fields(argv):
+    fields = {}
+    cid = _parse_opt(argv, "cycle-id")
+    if cid is not None:
+        fields["cycle_id"] = cid
+    did = _parse_opt(argv, "delegation-id")
+    if did is not None:
+        fields["delegation_id"] = did
+    da = _parse_opt(argv, "dispatched-at")
+    if da is not None:
+        fields["dispatched_at"] = da
+    ver = _parse_opt(argv, "verified")
+    if ver is not None:
+        fields["verified"] = ver.strip().lower() in ("true", "yes", "1")
+    return fields
 
 
 # ===========================================================================
@@ -599,6 +1000,30 @@ def _resolve_log_dir(cli_val):
             or os.getcwd())
 
 
+def _resolve_state_dir(cli_val, base_dir):
+    """키드 인덱스 디렉토리 (§13.3). CLI > env > <base-dir>/.aidlc-state.
+    base_dir 가 없으면(그리고 env·CLI 도 없으면) cwd 기준 .aidlc-state 로 폴백."""
+    if cli_val:
+        return cli_val
+    env = os.environ.get("AIDLC_STATE_DIR")
+    if env:
+        return env
+    root = base_dir or os.getcwd()
+    return os.path.join(root, ".aidlc-state")
+
+
+def _resolve_work_key(cli_val, state_dir, session_id):
+    """§13.5 키 해석 우선순위: --work-key/AIDLC_WORK_KEY > active-포인터(session_id로 조회) > 없음.
+    session_id 자체는 키가 아니라 포인터 조회 핸들이다(§13.2)."""
+    k = cli_val or os.environ.get("AIDLC_WORK_KEY")
+    if k:
+        return _sanitize_key(k)
+    k = _read_active_pointer(state_dir, session_id)
+    if k:
+        return _sanitize_key(k)
+    return None
+
+
 # ===========================================================================
 # 9. CLI
 # ===========================================================================
@@ -617,8 +1042,15 @@ def _parse_event(argv):
     return _parse_opt(argv, "event")
 
 
+_SUBCOMMANDS = ("record", "transition", "close", "set-active", "reconcile")
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    # write-helper 서브커맨드? 첫 비-플래그 토큰이 알려진 서브커맨드면 그쪽으로 (§6.5 쓰기 경계).
+    if argv and not argv[0].startswith("-") and argv[0] in _SUBCOMMANDS:
+        return _run_subcommand(argv[0], argv[1:])
+    # 그 외 = CHECK 경로 (--event 구동, 읽기 전용).
     event = _parse_event(argv)
     if event not in ("PreToolUse", "PostToolUse", "Stop"):
         return 0  # 알 수 없는 이벤트 → no-op (degraded-safe)
@@ -626,6 +1058,7 @@ def main(argv=None):
     base_dir_arg = _parse_opt(argv, "base-dir")
     invariants_dir = _resolve_invariants_dir(_parse_opt(argv, "invariants-dir") or base_dir_arg)
     log_dir = _resolve_log_dir(_parse_opt(argv, "log-dir") or base_dir_arg)
+    state_dir = _resolve_state_dir(_parse_opt(argv, "state-dir"), base_dir_arg or log_dir)
     # stdin의 훅 JSON 읽기 (없거나 깨져도 진행)
     raw = ""
     try:
@@ -644,13 +1077,17 @@ def main(argv=None):
             data = {}
     tool_name = data.get("tool_name") if isinstance(data, dict) else None
     tool_input = (data.get("tool_input") if isinstance(data, dict) else None) or {}
+    # session_id 는 키가 아니라 active-포인터 조회 핸들이다(§13.2). 없어도 degraded-safe.
+    session_id = data.get("session_id") if isinstance(data, dict) else None
+    # 키 해석: --work-key/AIDLC_WORK_KEY > active-포인터 > 없음(키드 체크 no-op).
+    work_key = _resolve_work_key(_parse_opt(argv, "work-key"), state_dir, session_id)
     # Stop-block 무한루프 가드용 신호 — 재진입한 Stop 훅이면 하네스가 true 로 실어 준다.
     # 깨지거나 없으면 False(=미재진입)로 안전 처리 (degraded-safe).
     stop_hook_active = bool(data.get("stop_hook_active")) if isinstance(data, dict) else False
     code = 0
     try:
         invs = load_invariants(invariants_dir)
-        findings = evaluate(event, tool_name, tool_input, invs, log_dir)
+        findings = evaluate(event, tool_name, tool_input, invs, log_dir, state_dir, work_key)
         out, code = emit(event, findings, stop_hook_active)
     except Exception:
         out, code = None, 0  # 무엇이 어긋나도 조용히 통과 (EX-15 / C FALLBACK)

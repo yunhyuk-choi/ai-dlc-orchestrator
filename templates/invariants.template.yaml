@@ -11,8 +11,11 @@
 # > 위치: ai-dlc-orchestrator/templates/invariants.template.yaml
 #
 # ── 계약 버전 ──────────────────────────────────────────────────────────────
-# INVARIANTS-CONTRACT: v1
+# INVARIANTS-CONTRACT: v2
 #   본문(스키마·체크 id·훅 JSON 계약)이 바뀌면 이 값을 올린다. SELF-CHECK 계약과 같은 사상.
+#   v1 → v2: 키드(keyed) per-work-item 상태머신 체크 3종(keyed-record-on-dispatch /
+#            keyed-valid-status-transition / keyed-log-on-done)과 선결 조건 keyed-state-dir 추가
+#            (specs/INVARIANT-ENFORCEMENT.md §13 — 동시성-안전 강제. 엔진 INVARIANTS_CONTRACT 상수와 짝).
 #
 # ── 불변식 1개 스키마 ──────────────────────────────────────────────────────
 #   id              : 안정적 kebab-case 식별자. *병합 키*. (필수)
@@ -28,7 +31,8 @@
 #   tier            : block | warn | advisory   (아래 「tier 의미론」)
 #   requires        : 실행 선결 조건 id 목록. 하나라도 불충족이면 이 불변식은 *조용히 SKIP*
 #                       (미충족 → 건너뜀 = 환경 중립 견고성. 로그 계층·트래커 config 부재 등).
-#                       현재 지원: ["local-log-layer"]  (cycles/ 로컬 로그 계층 존재).
+#                       현재 지원: ["local-log-layer"]  (cycles/ 로컬 로그 계층 존재),
+#                                  ["keyed-state-dir"] (키드 인덱스 <state_dir> 디렉토리 존재 — §13).
 #   scope           : local   (팀 중립 불변식은 local만 — 엔진은 로컬 로그 계층만 읽는다. 네트워크·트래커 없음)
 #   personal-adjust : locked | escalate-only | full
 #                       개인 파일이 *이 팀 불변식*을 재조정할 수 있는 범위:
@@ -60,9 +64,19 @@
 #   - 개인에만 있는 새 id = 자유(그대로 추가). 통상 concern: ergonomics.
 #
 # ── 체크 id (엔진 구현 — specs/INVARIANT-ENFORCEMENT.md §체크) ────────────
+#   [전역 파일럿 — v1]
 #   open-cycle-record-exists : 사이클 액션이 있었는데 *열린* cycles/*/audit.md
 #                              (CYCLE-START 있고 CYCLE-END 없음, CYCLE-REOPEN 반영)이 하나도 없으면 위반.
 #   no-stale-open-cycle      : (Stop 백스톱) 열린 사이클 기록이 턴 경계를 넘겨 잔존하면 위반(가시화).
+#   [키드 per-work-item — v2 · §13.5. 각 체크는 *오직 이 키의 상태 파일*(<state_dir>/<key>.json)만
+#    읽는다 → 워커 B가 워커 A의 열린 키에 영향받지 않음(동시성-안전) → block-tier 안전(Phase 3).
+#    키 없음·state_dir 없음·레코드 malformed → no-op(차단 아님). 키는 오케스트레이터가 디스패치마다
+#    발급하는 delegation-id(§13.2) — env AIDLC_WORK_KEY / --work-key / active-포인터로 훅에 도달.]
+#   keyed-record-on-dispatch      : (PostToolUse) 디스패치했는데 이 키의 레코드가 없으면 위반(위임=기록).
+#   keyed-valid-status-transition : (PostToolUse/Stop) 이 키가 검증 없이 done(verified != true)이거나
+#                                    status가 유효 집합(in-progress·additional-work·done) 밖이면 위반.
+#   keyed-log-on-done             : (Stop) 이 키가 done인데 대응 CYCLE-END 로그 흔적이 없거나,
+#                                    아직 in-progress/additional-work인 채 턴 경계를 넘기면 위반.
 #
 # ── PreToolUse block 바인딩 예시 (실행 전 진짜 차단이 필요한 block-tier) ──────────
 #   실행 전 도구를 실제로 막고 싶으면 tier: block + PreToolUse 바인딩을 쓴다. 형태:
@@ -99,6 +113,55 @@ invariants:
       # (2) 턴 경계 백스톱 — 열린 사이클이 남아 있으면 가시화
       - event: Stop
         check: no-stale-open-cycle
+
+  # ── 키드(keyed) per-work-item 상태머신 (범용·중립 — §13.5) ────────────────
+  # 전역 파일럿(cycle-must-log)과 *공존*한다(Phase 2 — 둘 다 warn). 전역 boolean은 동시성
+  #   (공유 dlc-meta·다중 워커) 하에서 워커 A의 열린 사이클이 워커 B의 Stop을 거는 교차오염
+  #   때문에 block-안전하지 않다(§13.1). 키드 체크는 *이 키의 상태 파일만* 읽어 그 교차오염을
+  #   없앤다 → Phase 3에서 block 승격이 안전해진다.
+  # 이 세 불변식은 로컬 파일(state_dir·audit.md)만 읽으므로 트래커 무참조·중립이다 → 템플릿 본문에 둔다.
+  #   단 `match`의 실제 디스패치 도구명은 SETTER가 환경 적응(⑥ — 예시 placeholder를 치환).
+  # Phase 2는 **tier: warn** 이다. block 승격(§13.7 Phase 3)은 키 스코핑이 A↔B 격리를 실측
+  #   확인한 *뒤에만*, 실효 이벤트(PreToolUse=(a) / Stop=(b)(c))로 옮겨 켠다 — 여기선 켜지 않는다.
+  # requires 에 keyed-state-dir 를 두어 인덱스 미구성 배포에서 조용히 SKIP(중립 견고성).
+
+  # (a) 위임(디스패치)했으면 이 키의 상태를 기록하라 — 안 하면 warn.
+  - id: keyed-record-on-dispatch
+    concern: integrity
+    tier: warn                      # Phase 2. 실행 전 진짜 차단이 필요하면 PreToolUse+block(§13.7 Phase 3).
+    personal-adjust: escalate-only
+    scope: local
+    requires: ["local-log-layer", "keyed-state-dir"]
+    bindings:
+      - event: PostToolUse
+        match: ["Task", "Agent"]    # 예시 placeholder — SETTER가 실제 서브 디스패치 도구명으로 적응(⑥).
+        check: keyed-record-on-dispatch
+
+  # (b) 이 키가 검증 없이 done 이거나 status 가 유효 집합 밖이면 warn — 검증 없이 완료로 건너뛰지 마라.
+  - id: keyed-valid-status-transition
+    concern: integrity
+    tier: warn
+    personal-adjust: escalate-only
+    scope: local
+    requires: ["local-log-layer", "keyed-state-dir"]
+    bindings:
+      - event: PostToolUse
+        match: ["Task", "Agent", "Bash:*merge*", "Bash:*commit*"]
+        check: keyed-valid-status-transition
+      - event: Stop
+        check: keyed-valid-status-transition
+
+  # (c) 이 키가 done 인데 CYCLE-END 흔적이 없거나, 아직 열린 채 턴 경계를 넘기면 warn(가시화·백스톱).
+  #     전역 no-stale-open-cycle 과 달리 *이 키만* 보므로 A의 열림이 B의 Stop을 걸지 않는다(§13.5).
+  - id: keyed-log-on-done
+    concern: integrity
+    tier: warn
+    personal-adjust: escalate-only
+    scope: local
+    requires: ["local-log-layer", "keyed-state-dir"]
+    bindings:
+      - event: Stop
+        check: keyed-log-on-done
 
   # <SLOT: project-adaptive invariants>
   # SETTER가 STEP 2에서 환경 특화(예: 트래커 결합) 불변식을 여기 짜 넣는다.

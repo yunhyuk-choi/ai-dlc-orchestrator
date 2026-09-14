@@ -323,6 +323,222 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 
 ---
 
+## 13. 진화 제안 — 키드(keyed) 상태머신 강제화 (동시성-안전 block)
+
+> **상태: IMPLEMENTED (Phase 2 — 계약 v2).** 본 절의 확정 설계(§13.8)가 **엔진·템플릿·SETTER S8.8에 실제 구현**됐다. `enforce.template.py`에 키 획득(env/CLI/active-포인터)·per-key 체크 3종·state_dir IO·write-helper 서브커맨드(record/transition/close/set-active/reconcile)·reconcile-from-log가 들어갔고, `invariants.template.yaml`에 키드 불변식 3종(tier=warn·requires `[local-log-layer, keyed-state-dir]`)이 추가됐으며, `INVARIANTS-CONTRACT`가 v1→v2로 올랐다(엔진 `INVARIANTS_CONTRACT` 상수 + 템플릿 헤더). SETTER S8.8은 (2.5) 키드 배선(state_dir 생성·gitignore·키 프로비저닝 두 경로·write-helper 가용성)과 (5) 게이트 키드 픽스처를 담는다.
+> **Phase 2 이므로 키드 3종은 warn 이며 전역 `cycle-must-log`(warn)와 *공존*한다.** block 승격(§13.7 Phase 3 — Stop=(b)(c)/PreToolUse=(a))은 키 스코핑이 A↔B 격리를 라이브로 실측 확인한 *뒤* 별도 사이클/새 세션 몫이다. **구현 중 해소한 3개 갭은 §13.6 말미 「구현 노트」에 기록**(reconcile 배치·pointer-write-via-helper·log-carries-delegation-id).
+> **거버넌스 경로 = DP-9 (프레임워크 진화).** 본 제안은 관찰된 실패 모드(동시성 하에서 block 불가)를 프레임워크 룰북 변경으로 승격하는 것이므로 `specs/EVOLUTION.md` DP-9 게이트(항상 사용자 컨펌)를 따른다. 단 EVOLUTION §의 *자동 경로*는 `dlc-meta` 인스턴스 전용(공유 룰북 불가침, D-Stage3-6)이므로, **공유 프레임워크 레포(`enforce.template.py`·템플릿·본 명세)를 건드리는 본 변경은 자동 경로 밖 — 원칙 8 PR/머지(사람 큐레이션)** 로만 반영한다(EVOLUTION §3.E·§4.3의 "공유 귀속분" 경로). 본 DRAFT PR이 그 통로다.
+
+### 13.1 문제 — 전역 boolean은 동시성 하에서 block-안전하지 않다 (코드 대조 확인)
+
+현행 파일럿 `cycle-must-log`(§7)은 **공유 `dlc-meta`의 모든 `cycles/*/audit.md`에 대한 전역 boolean**("*어떤* 사이클이든 열려 있나?")으로 동작한다. **작업 아이템/세션 키가 없다.** 코드로 확인된 정확한 형태:
+
+- `_open_cycles(log_dir)` (enforce.template.py) — `cycles/` 하위 **전체** audit.md를 순회해 열린 것들의 리스트를 반환. 스코프는 로그 계층 전체(전역).
+- `check_open_cycle_record_exists(log_dir)` (PostToolUse) — `_open_cycles`가 **하나라도** 있으면 위반 아님. → *열림이 하나라도 있으면 모두를 만족*.
+- `check_no_stale_open_cycle(log_dir)` (Stop) — `_open_cycles`가 **하나라도** 있으면 위반. → *열림이 하나라도 있으면 모두가 걸림*.
+- `main()`은 stdin 훅 JSON에서 `tool_name`·`tool_input`·`stop_hook_active`만 뽑는다. **`session_id`·`cwd`는 현재 추출하지 않는다**(확인: 해당 키에 대한 참조 없음). 체크 함수는 전부 시그니처 `fn(log_dir)` — *현재 세션을 식별할 인자가 아예 없다*.
+
+**동시성(워커 4개, 공유 `dlc-meta` 1개) 하의 귀결** — block-tier를 켤 수 없는 이유:
+
+| 지점 | 현행 동작 | 동시성 하 결함 |
+|---|---|---|
+| **Stop** `no-stale-open-cycle` | 열림이 하나라도 있으면 위반 | 워커 A의 *아직 열린* 사이클이 워커 B의 Stop을 건다 → **교차오염**. B는 자기 일을 다 마쳤어도 A 때문에 차단된다 → block이면 B가 못 끝냄. |
+| **PostToolUse** `open-cycle-record-exists` | 열림이 하나라도 있으면 만족 | *동시에 너무 느슨* — A의 열린 사이클이 B의 디스패치 위반을 가려, B가 자기 사이클을 안 열어도 경고가 안 뜬다(거짓 만족). |
+| 종합 | 전역 상태 | PostToolUse에선 **너무 느슨**(아무 열림이나 전부 만족)이고 Stop에선 **너무 엄격**(아무 열림이나 전부 차단). warn이 무해한 유일한 이유는 *차단하지 않아서*일 뿐 — **block은 오늘 안전하게 켤 수 없다.** |
+
+> 요컨대 상태의 *스코프*와 강제의 *스코프*가 어긋나 있다: 강제는 개별 작업 아이템 단위여야 하는데 상태는 전역 단위다. block을 안전하게 하려면 상태를 **작업 아이템 키로 분할**해야 한다.
+
+### 13.2 키(key) = per-work-item `delegation-id` / `session_id` = 조회 핸들 (확정)
+
+**확정: 키는 오케스트레이터가 *디스패치/작업-시작마다* 발급하는 per-work-item `delegation-id`다 (`session_id`가 아니다).** 형식은 중립적으로 자유 — UUID 또는 `<ticket-key>+<seq>` 같은 안정 식별자. 각 작업 아이템(=오케스트레이터의 한 위임/한 사이클)에 이 키가 1:1로 붙는다. 엔진은 훅 시점에 *지금 이 실행의 키*를 얻어 **그 키의 상태만** 읽는다.
+
+**왜 `session_id`가 키가 아닌가 (검토에서 뒤집힌 지점).** 한 세션이 *여러* 작업 아이템을 처리한다 — 워커의 `--resume`, 혹은 오래 사는 로컬 오케스트레이터가 여러 작업을 직렬로 돈다. `session_id`를 키로 쓰면 이 여럿을 *하나로 뭉개서(conflate)* per-work-item 격리가 깨진다. 따라서 세션 대 작업 아이템 1:1을 *정확히* 표현하는 오케스트레이터 발급 `delegation-id`가 키여야 한다.
+
+**`session_id`는 키가 아니라 조회 *핸들*이다** — 강제 훅이 *현재 작업 아이템의 `delegation-id`를 어떻게 알아내는가*의 문제만 푼다. 두 배치 형태로 나뉜다:
+
+| 배치 | 키가 훅에 도달하는 법 | 메커니즘 |
+|---|---|---|
+| **디스패처 / worker-per-workitem** (작업 아이템당 워커 프로세스 하나) | 워커 스폰 시 오케스트레이터가 **런치 env** `AIDLC_WORK_KEY=<delegation-id>`를 심는다(이미 추가된 `-w` 워크디렉토리 인자와 나란히). | 훅이 상속된 env에서 직접 읽음 — 플러밍 최소. |
+| **로컬 장수(long-lived) 오케스트레이터** (한 세션이 여러 작업 아이템을 직렬 처리) | 세션 도중엔 런치 env를 리셋할 수 없다 → 오케스트레이터가 작업-시작마다 **active-work 포인터 파일** `<state_dir>/active-<session_id>`에 *현재* `delegation-id`를 쓴다. | 훅이 stdin JSON에서 자기 `session_id`를 읽음 → 그 포인터를 해소(resolve) → 현재 `delegation-id`. |
+
+**엔진 키 해석 우선순위(§13.5):** `AIDLC_WORK_KEY`(또는 `--work-key`) > active-포인터(자기 `session_id`로 조회) > **없음(no-op / degraded, 차단 아님)**. `session_id` 자체는 더 이상 폴백 *키*가 아니다 — 포인터 조회의 핸들로만 쓰인다.
+
+**티켓 키는 키로 쓰지 않는다(기각 유지)** — 트래커에 묶이면 프레임워크 중립 원칙 위반. 티켓↔사이클 바인딩은 별개 관심사(POLICY-ISSUE-TRACKING). 단 `delegation-id`를 `<ticket-key>+<seq>`로 *구성*하는 것은 사람에게 의미를 주면서 엔진엔 불투명 문자열이라 무방(엔진은 트래커를 참조하지 않는다).
+
+> 키·`session_id`는 파일명 세그먼트가 되므로 엔진은 이를 **안전화(sanitize)**한다(영숫자·`-`·`_`만 허용, 그 외는 `_`로 치환, 길이 상한). 부정 경로·구분자 주입 방지.
+
+### 13.3 인덱스(index) — `key → status` 맵, per-key 파일
+
+`key → status`를 O(1)로 조회·갱신하기 위한 저장 구조.
+
+**권장: per-key 파일** — `<state_dir>/<key>.json` (키 하나당 파일 하나).
+
+```
+<state_dir>/                         (예: dlc-meta/.aidlc-state/  — 런타임·ephemeral)
+├── <keyA>.json     { "key": "...", "status": "in-progress", "cycle_id": "...",
+│                      "dispatched_at": "...", "verified": false, "updated_at": "..." }
+├── <keyB>.json     { ... "status": "additional-work" ... }
+└── ...
+```
+
+- **동시성 안전(락 프리)**: 서로 다른 워커는 서로 다른 파일을 쓴다 → 쓰기 경합이 구조적으로 없다. 한 파일은 한 키(대개 한 워커)만 건드리므로 파일 락·플록이 불필요. 쓰기는 *temp+atomic rename*(같은 키의 self-갱신 원자성)만으로 충분.
+- **자연스러운 O(1)**: 조회·갱신·삭제가 곧 `os.path.join(state_dir, key + ".json")` 파일 하나에 대한 연산.
+- **대조 — 단일 JSON + 락**: `index.json` 하나에 전 키를 담으면 *모든* 워커가 같은 파일을 read-modify-write → **락 필요**(파일 락은 OS별로 갈리고 stdlib 이식성이 나쁨; 락 없이는 lost-update). per-key 파일은 이 문제를 애초에 없앤다. 조회도 전체 파싱 대신 파일 하나만 읽으면 됨.
+
+**추적 결정 (Q3 확정): `state_dir`은 ephemeral·gitignore·per-deployment.** 근거:
+- 인덱스는 *in-flight 상태*(누가 지금 무엇을 하는 중인가)일 뿐, 사이클의 *역사*가 아니다. 역사는 `audit.md`(append-only, 팀 추적)가 단일 원천이다(§13.4·아래 2층 모델).
+- 세션·워커 로컬 런타임 상태를 커밋하면 팀원 머신 간 무의미한 충돌·노이즈가 발생한다(선례: 훅 설정·엔진 사본·`.unavailable` 마커도 개인·gitignore — §11.2.2).
+- **per-deployment 스코프**: `state_dir`은 *한 배포* 안에서만 의미를 가진다. 디스패처 배포에선 공유 볼륨 위에 있어 **자연히 central+워커가 공통으로 본다**(같은 배포 내 프로세스들이 같은 `state_dir`을 가리킴). 하지만 **머신 간에 git으로 공유되지 않는다** — 크로스-머신 "일이 아직 열려 있나"의 원천은 인덱스가 아니라 아래 내구 로그다.
+- 따라서 `dlc-meta/.gitignore`에 `.aidlc-state/`를 추가한다(SETTER (0) 추적 제외 선결에 편입 — §13.6). **인덱스 유실은 오류가 아니라 no-op**(§13.4 degraded).
+
+#### 2층 상태 모델 (Q5 확정 — 핵심 정련)
+
+강제 상태를 **내구(durable) 진실**과 **에페메랄(ephemeral) 인덱스** 두 층으로 나눈다.
+
+| 층 | 저장소 | 추적 | 수명 | 역할 |
+|---|---|---|---|---|
+| **내구 진실** | 사이클 로그 `dlc-meta/cycles/*/audit.md` | git-공유 | **CYCLE-END 까지** — 디스패처 작업은 *로컬 이어받기 + MERGE 이후에만* CYCLE-END(자율모드 A·B 공통). | 크로스-머신 "일이 아직 열려 있나"의 **단일 원천**. |
+| **에페메랄 인덱스** | `<state_dir>/<key>.json` | gitignore | 배포 수명 / 세션 수명 (언제든 휘발 가능) | per-key **빠른 강제 인덱스**. |
+
+- **에페메랄 인덱스는 세션/배포 시작 시 사이클 로그에서 REBUILD(재구성)한다(reconcile).** → 인덱스를 지워도(휘발) 안전하다: 진실은 로그에 있고, 시작 시 로그의 열린 사이클들로부터 인덱스가 다시 세워진다. (기존 "세션 시작 reconcile"을 *삭제*가 아니라 **로그로부터 REBUILD**로 재정의한다.)
+- done 전이 시 인덱스 레코드는 *삭제*되고 진실은 `audit.md`의 CYCLE-END로 남는다. 이 분리가 §13.4 라이프사이클과 §2.1 index.md("audit에서 파생된 재생성 가능 롤업")의 사상과 정합한다.
+
+> **핵심 분리(재확인): ephemeral in-flight 인덱스 ↔ append-only 내구 역사.** 인덱스(`.aidlc-state/`, gitignore·재생성 가능)는 강제용 상태머신, `audit.md`(git-추적·불변)는 진실. 인덱스는 로그의 *파생물*이지 원천이 아니다.
+
+### 13.4 라이프사이클 + 계층별 소유 — 오케스트레이터가 유지, 엔진이 강제
+
+오케스트레이터 규율(책임 7)이 상태를 전이시키고, 엔진(§13.5 체크)이 그 규율을 강제한다. 상태값: `in-progress` · `additional-work` · (종결 시 레코드 삭제).
+
+**쓰기 경계 (Q4 확정 = B).** `enforce.py`의 **CHECK 경로는 읽기 전용**이다. 모든 *쓰기*(record-on-dispatch / status 전이 / done→삭제)는 엔진의 단일 **write-helper 서브커맨드**를 통과한다 — 그 서브커맨드가 (i) atomic temp+rename, (ii) 스키마 검증, (iii) 인덱스 포맷의 단일 원천을 담당한다. **디스패치한 오케스트레이터 계층**이 이 서브커맨드를 호출한다(오케스트레이터가 인덱스 포맷을 손으로 재현하지 않는다 — 관심사 분리 + 포맷 표류 방지). 아래 다이어그램의 record/update/삭제는 전부 이 write-helper 호출이다.
+
+```
+  (레코드 없음)
+      │  디스패치 (오케스트레이터가 서브에 위임)
+      ▼
+  record(status = in-progress)          ← <state_dir>/<key>.json 생성
+      │
+      │  서브가 "완료" 클레임
+      ▼
+  오케스트레이터 지상검증 (POLICY-VERIFY — 클레임≠증거)
+      ├── 아직 아님 →  update(status = in-progress | additional-work)   (레코드 유지)
+      │
+      └── 진짜 완료로 판정 →  ┌ status = done
+                              ├ 인덱스 레코드 삭제 (<key>.json rm)
+                              ├ audit.md에 CYCLE-END append
+                              └ push
+                              ─ 위 4개를 하나의 (준)원자적 트리거로 함께
+```
+
+- **한 트리거로 묶는 이유**: done 판정·인덱스 삭제·CYCLE-END·push가 갈라지면 "인덱스는 지웠는데 로그가 없다"거나 그 반대의 반쪽 상태가 생긴다. 순서 권장: **CYCLE-END append → (push) → 인덱스 레코드 삭제** (역사부터 확정한 뒤 ephemeral 상태를 거둔다 — 크래시 시에도 진실이 남고, 남은 인덱스는 다음 턴에 백스톱으로 가시화된다).
+- **ephemeral ↔ append-only 분리(재확인)**: in-flight 인덱스는 삭제로 수명을 마치고, 역사는 audit.md에 영속. 인덱스는 언제든 audit.md들로 재구성 가능(§13.3 REBUILD, 원천 아님).
+
+#### 계층별 소유 — 재귀 오케스트레이터 (Q4 확정 = write-helper + 이 모델)
+
+오케스트레이터는 **재귀·다계층** 시스템이다(ORCHESTRATOR-AGENT §1 재귀 확장). **각 오케스트레이터 *계층*은 *자기 직속 위임*의 인덱스 읽기/갱신만 소유한다.** 키(`delegation-id`)는 완료 클레임에 실려 **위(계층 상향)로** 전달된다 — 각 계층이 자기 위임을 자기 키로 조회·전이하고, 그 완료가 상위 계층의 클레임이 되어 다시 그 계층의 키로 인덱스에 반영된다.
+
+**worked example — 디스패처 2계층:**
+
+```
+사용자
+  │
+  ▼  [계층 L1] user-오케스트레이터 (사용자 컨테이너)
+      · 자기 state_dir 인덱스를 읽는다
+      · 서브들에게 위임 (각 위임에 delegation-id 발급, write-helper로 record=in-progress)
+      · 서브가 "완료" 클레임 — 클레임에 자기 키를 실어 올림
+      · user-오케가 그 키로 조회 → 지상검증 → status 갱신
+        (일이 더 남았으면 in-progress 유지, 끝났으면 done→삭제+CYCLE-END+push)
+      · L1의 완료가 central의 서브-에이전트에게 신호로 간다
+  │  (완료 신호 + 키가 상향)
+  ▼  [계층 L2] central 오케스트레이터
+      · central의 서브가 자기 키를 실어 central 오케에 "완료" 클레임
+      · central 오케가 *자기 계층의* 인덱스에 대해 동일 동작(조회·검증·전이·삭제)
+```
+
+**N 계층으로 일반화**: 계층 k는 계층 k+1(자기 서브)의 완료 클레임을 자기 키로 받아 자기 인덱스를 전이하고, 자기 완료를 계층 k−1로 올린다. 어느 계층도 다른 계층의 인덱스를 직접 건드리지 않는다 — 각자 자기 state_dir(§13.3 per-deployment)에서 자기 직속 위임만 본다.
+
+#### GC — 타이머 없음, 언지형(user-notify) (Q5 확정)
+
+**타이머/TTL 기반 자동 GC를 두지 않는다.** 디스패처 작업 아이템은 *merge를 기다리며 며칠씩 정당하게 열려 있을 수 있다* — 타이머는 그런 열린 일을 잘못 삭제한다. 대신 오래-열림/고아 레코드는 **소유 계층이 사용자에게 표면화(surface)**한다:
+
+- **로컬 오케스트레이터**(이미 사이클 로그를 추적하는 계층)가 *사용자 본인의* 오래-열린 일을 사용자에게 알린다 — 예: "디스패치한 아이템 X가 아직 열려 있음 — 이어서/merge 할까요?".
+- **central 오케스트레이터는 이들을 무시한다**(정보용일 뿐 — 자기가 사용자 채널을 안 가짐).
+- **진짜 고아**(크래시난 세션이 남긴 레코드)도 같은 경로 — user-notify → **사람이 정리를 결정**한다. 자동 삭제 없음(프레임워크 테넷: *의미는 사람이 결정한다*; 인덱스는 어차피 로그에서 REBUILD되므로 방치해도 안전).
+
+### 13.5 강제 지점 — per-key 스코프 신규 선언 체크 3종
+
+각 체크는 **오직 이 키의 상태 파일만** 읽는다(전역 `_open_cycles`가 아니라 `<state_dir>/<key>.json`). → 워커 B는 워커 A의 상태에 영향받지 않음 → **block-tier 안전**.
+
+| # | 체크(제안 id) | 이벤트 | 위반 조건 | 취지 | block 안전성 |
+|---|---|---|---|---|---|
+| **(a)** `keyed-record-on-dispatch` | PostToolUse(디스패치 도구 매치) | 이 키의 레코드가 없음(디스패치했는데 미기록) | 위임했으면 상태를 기록하라 | 이 키만 봄 — 타 워커 무관 |
+| **(b)** `keyed-valid-status-transition` | PostToolUse / Stop | 이 키가 `done`으로 점프했는데 레코드가 없거나 `verified != true`(검증 없이 done) | 검증 없이 완료로 건너뛰지 마라 | 이 키만 봄 |
+| **(c)** `keyed-log-on-done` | Stop(턴 경계) | 이 키가 done인데 대응 CYCLE-END(+push) 흔적이 없음 / 또는 이 키가 아직 `in-progress`인 채 턴 경계를 넘김 | done 전이는 로그+push를 낳아야 한다 / 열린 채 새지 않게 | 이 키만 봄 — A의 열림이 B의 Stop을 안 건다 |
+
+- **왜 block이 안전해지나**: 현행 Stop 백스톱(§13.1)이 *전역*이라 A→B 교차오염을 일으켰다. per-key로 좁히면 각 Stop은 자기 키만 평가 → 워커 B의 Stop은 B의 레코드로만 판정 → A의 미종결이 B를 못 막는다. PostToolUse의 "느슨함"도 사라진다(전역 아무 열림이 아니라 *이 키*의 레코드 유무).
+- **degraded/loop-safe(불변식 유지)**: 키 부재·`state_dir` 부재·레코드 malformed → **no-op(차단 아님)**. `requires`에 신규 선결 `keyed-state-dir`(= `state_dir` 존재)를 두어 미구성 배포에서 조용히 SKIP. Stop-block 무한루프는 기존 `stop_hook_active` 강등 가드(§11.4 (c))를 그대로 재사용. PostToolUse는 사후라 block 금지(§11.4 (b)) → (a)는 warn 또는, 실행 전 진짜 차단이 필요하면 **PreToolUse**로 바인딩.
+
+### 13.6 엔진 확장 — 구현된 코드 변경 (IMPLEMENTED)
+
+아래 1~10은 `enforce.template.py`·`invariants.template.yaml`에 **실제 구현**됐다(계약 v2). 각 항목은 이제 라이브 엔진의 명세이자 근거다.
+
+1. **키 획득 (env + 포인터)** — `main()`이 stdin JSON에서 `session_id`를 추가로 뽑고, `_resolve_work_key()`를 우선순위대로 해석한다: **`AIDLC_WORK_KEY`(또는 `--work-key`) > active-포인터(`<state_dir>/active-<session_id>`를 읽어 현재 `delegation-id`) > 없음(`None` → 키 요구 체크 no-op)**. `session_id`는 *키가 아니라* 포인터 조회 핸들이다(§13.2). 키 안전화(§13.2) 포함.
+2. **active-포인터 파일** — 로컬 장수 오케스트레이터용 `<state_dir>/active-<session_id>` 읽기 헬퍼(`_read_active_pointer(state_dir, session_id)`). 파일 부재 = 포인터 없음(→ 다음 폴백). 쓰기는 write-helper(항목 4)·오케스트레이터 몫. `session_id` 안전화 후 파일명 구성.
+3. **state_dir 해석** — `--state-dir`(기본 `<base-dir>/.aidlc-state`) 추가. `_resolve_*` 3종과 같은 패턴.
+4. **write-helper 서브커맨드 + 읽기/쓰기 경계 (Q4=B)** — CHECK 경로는 **읽기 전용**(`_read_state(state_dir, key)` — 파일 부재·malformed = `None`/degraded). 모든 *쓰기*는 별도 **write-helper 서브커맨드**로 격리: record-on-dispatch / status 전이 / done→삭제 + active-포인터 세팅. atomic temp+rename·스키마 검증·인덱스 포맷 단일 원천을 이 서브커맨드가 담당하고, **디스패치한 오케스트레이터 계층이 호출**한다(§13.4). 훅 CHECK 경로와 write-helper는 같은 엔진 파일 안에서 진입점만 분리.
+5. **reconcile-from-log (시작 시 REBUILD)** — 세션/배포 시작 시 사이클 로그(`cycles/*/audit.md`)의 열린 사이클들로부터 에페메랄 인덱스를 **재구성**하는 경로(서브커맨드 또는 시작 훅). 인덱스는 로그의 파생물이므로 휘발돼도 안전(§13.3 2층 모델). *삭제*가 아니라 REBUILD임에 유의.
+6. **체크 시그니처 확장** — 현행 체크는 `fn(log_dir)`. 신규 per-key 체크는 키·state_dir가 필요하므로, `evaluate()`가 체크에 **컨텍스트 객체**(`log_dir`, `state_dir`, `work_key`)를 넘기도록 호출부를 일반화한다(기존 두 체크는 시그니처 호환 위해 어댑터로 감싸거나 `**ctx` 수용). `CHECKS` 레지스트리에 (a)(b)(c) 3종 등록.
+7. **선결 조건** — `_precondition_met`에 `keyed-state-dir` 추가(= `os.path.isdir(state_dir)`), 미지원 조건은 여전히 불충족 처리(중립).
+8. **YAML 스키마** — 신규는 기존 스키마에 그대로 맞는다: `check`에 (a)(b)(c) id, `requires: [local-log-layer, keyed-state-dir]`, `bindings`에 이벤트. 스키마 변경 **불필요**(체크 id·선결 조건만 추가) → `INVARIANTS-CONTRACT`는 *체크 id 집합*이 바뀌므로 v1→v2로 올린다.
+9. **템플릿 SLOT** — per-key 불변식은 범용(중립)이므로 파일럿처럼 `invariants.template.yaml` 본문에 둘 수 있으나(트래커 무참조), 실제 디스패치 도구명 `match`는 여전히 SETTER가 환경 적응(⑥). 트래커-결합분만 `<SLOT>`(SETTER S8.8 위빙 — §13.7).
+10. **중립·stdlib·degraded 유지** — 신규 코드(키 획득·active-포인터·write-helper·reconcile)도 로컬 파일(state_dir·audit.md)만 읽고 네트워크·트래커 무참조. stdlib-only(json·os·re·tempfile). CHECK 경로는 무엇이 어긋나도 exit 0(write-helper 서브커맨드만 잘못된 인자·무효 전이에 exit 2로 *거부*한다 — 훅이 아니라 오케스트레이터가 부르는 경로라 결과를 알려야 하기 때문).
+
+#### 구현 노트 — §13이 플래그한 3개 갭의 해소 (구현 중 결정, 지어내지 않음)
+
+1. **reconcile 배치 (서브커맨드 vs 시작 훅) → `reconcile` 서브커맨드로 확정.** §13.6-5가 "서브커맨드 또는 시작 훅"을 열어 뒀다. **write-helper 서브커맨드**(`enforce.py reconcile --base-dir … [--state-dir …]`)로 구현했다 — 이유: (i) CHECK 경로를 읽기 전용으로 유지(Q4=B — 시작 훅으로 넣으면 훅 경로가 쓰기를 하게 된다), (ii) 명시적 호출이 오케스트레이터 라이프사이클(책임 7, 세션/배포 시작)에 자연히 붙는다, (iii) 매 훅 발화마다 REBUILD하는 낭비를 피한다. reconcile은 **이미 있는 레코드를 덮지 않는다(멱등 — 라이브 레코드 보존).**
+2. **pointer-write-via-helper → `set-active` 서브커맨드로 확정.** §13 결정(Q4=B와 정합)대로 active-포인터 *쓰기*도 write-helper를 경유한다 — `enforce.py set-active --session-id <sid> --work-key <key>`가 `<state_dir>/active-<sid>`를 atomic temp+rename으로 쓴다. 오케스트레이터가 포인터 파일 포맷을 손으로 재현하지 않는다(§13.4 관심사 분리). CHECK 경로는 이 포인터를 *읽기만* 한다(`_read_active_pointer`).
+3. **log-carries-delegation-id 갭 → best-effort reconcile + 전방호환, 데이터는 지어내지 않음.** 현행 CYCLE-LOG.md §5의 `CYCLE-START` entry는 오케스트레이터가 훅에 넘기는 키(`delegation-id`)를 담지 않는다. 따라서 로그만으로는 키를 완전 복원할 수 없다. 구현:
+   - `reconcile`은 audit.md에 `Delegation:`/`Work-key:` 줄이 *있으면* 그 값을 키로 쓴다(`key_source="delegation-id"`) — 전방호환: CYCLE-LOG가 이 필드를 채우기 시작하면 reconcile이 완전해진다. **없으면** cycle-id(디렉토리명)를 키로 폴백한다(`key_source="cycle-id"`). 레코드에 `reconciled: true`·`key_source`를 남겨 *근사치임*을 명시한다 — 없는 delegation-id를 지어내지 않는다.
+   - **함의**: cycle-id 폴백으로 만든 레코드는 라이브 훅이 delegation-id로 해소하는 키와 *일치하지 않는다.* 즉 현행 reconcile은 "열린 일이 있다"는 가시성/백스톱 근사치이지, 라이브 키드 체크와 1:1로 매칭되지는 않는다(cleared state_dir 안전망으로는 기능하되, delegation-id 매칭 강제는 로그가 그 필드를 담아야 완전해진다).
+   - **TODO(follow-up 사이클)**: CYCLE-LOG.md `CYCLE-START` entry에 선택적 `Delegation:` 필드를 추가해 이 갭을 닫는다(그러면 reconcile이 delegation-id로 정확히 REBUILD한다). 본 PR은 CYCLE-LOG 형식을 바꾸지 않는다 — 엔진은 그 필드가 나타나면 *이미 소비할 준비*가 돼 있다.
+
+**스코프 아웃 (follow-up)**: (a) 위 CYCLE-LOG `Delegation:` 필드 추가, (b) Phase 3 block 승격(§13.7 — 라이브 파이어로 A↔B 격리 실측 후, 새 세션), (c) 오케스트레이터 룰북 라이프사이클 규율(책임 7이 언제 record/transition/close/set-active/reconcile를 부르는지의 산문 — 본 PR은 *엔진 메커니즘*을 제공하고, 그 호출 시점 규율은 ORCHESTRATOR/SETTER 후속 사이클 몫), (d) GC user-notify 표면화(§13.4 — 소유 계층의 사용자 알림, 엔진이 아니라 오케스트레이터 판단).
+
+### 13.7 마이그레이션 경로 (공존·단계적 escalation)
+
+현행 `cycle-must-log`(전역 warn)를 깨지 않고 얹는다. 병합 규율(§4.1)·degraded(§8) 그대로.
+
+| 단계 | 내용 | tier | 게이트 |
+|---|---|---|---|
+| **Phase 1** | 현행 `cycle-must-log`(전역) 유지 | warn | (현행) — 전역 warn은 무해하므로 유지. block으로 올리지 않는다. |
+| **Phase 2** | 키드 인덱스 + (a)(b)(c) 체크 **추가**, 오케스트레이터 라이프사이클(§13.4) 도입 | **warn** | 키 스코핑·인덱스 IO·라이프사이클을 실배포에서 관찰. 전역 `cycle-must-log`와 *공존*(둘 다 warn). 거짓양성/음성·키 획득(§13.2) 실측. |
+| **Phase 3** | 키드 체크를 **block**으로 승격(Stop=(c)/(b), PreToolUse=(a)) | **block** | §11.4 (d) 라이브 파이어로 *키 스코핑이 실제로 A↔B 격리를 하는지* 실측 확인 후에만. 이때 전역 `cycle-must-log`는 warn으로 강등 유지하거나 은퇴(키드가 대체). |
+
+- **escalation은 키드 스코핑이 들어간 *뒤에만*** block으로 간다 — 전역 상태에 block을 켜는 실수를 구조적으로 막는다.
+- **SETTER 위빙(S8.8 SLOT)** — 트래커 결합 부분(예: 키를 티켓에 매핑, 티켓 전이 강제)은 §11.2·§12의 `<SLOT: project-adaptive invariants>` 경로로 SETTER가 인터뷰(②) 결과에 따라 짜 넣는다. 범용 per-key 불변식(a·b·c) 자체는 트래커 무참조이므로 템플릿 본문 후보이나, `match` 도구명(⑥)·`--state-dir` 경로 바인딩·라이프사이클을 쓰는 오케스트레이터 주체는 SETTER/오케스트레이터 시점 인스턴스에 귀속.
+
+### 13.8 확정 결정 (사용자 검토 반영)
+
+과거 미결 5종이 사용자 검토로 아래와 같이 **확정**됐다.
+
+1. **키 선택 → per-work-item `delegation-id` (확정).** 오케스트레이터가 디스패치/작업-시작마다 발급하는 `delegation-id`가 키다(`session_id` 아님). 형식 자유(UUID 또는 `<ticket-key>+<seq>`). **근거**: 한 세션이 여러 작업 아이템을 처리(워커 `--resume`·장수 로컬 오케)하므로 `session_id`는 여럿을 뭉갠다. `session_id`는 조회 *핸들*로 강등. 상세 §13.2.
+2. **쓰기 측 키 획득 → env + active-포인터 (확정).** 디스패처/worker-per-workitem에선 오케스트레이터가 워커 스폰 시 런치 env `AIDLC_WORK_KEY=<delegation-id>`를 심음(훅이 env로 읽음). 로컬 장수 오케에선 런치 env를 세션 중 못 바꾸므로 `<state_dir>/active-<session_id>`에 현재 `delegation-id`를 쓰고, 훅이 자기 `session_id`로 그 포인터를 해소. 엔진 해석 우선순위: `AIDLC_WORK_KEY`/`--work-key` > active-포인터 > 없음(no-op). 상세 §13.2.
+3. **`state_dir` 추적 → ephemeral·gitignore·per-deployment (확정).** 한 배포 안(디스패처 공유 볼륨)에선 자연히 central+워커 공통, 머신 간 git 공유는 안 함. 크로스-머신 "열림" 원천은 인덱스가 아니라 내구 로그. 상세 §13.3.
+4. **읽기/쓰기 경계 → B: 엔진 write-helper 서브커맨드 (확정).** CHECK 경로는 읽기 전용, 쓰기는 엔진의 단일 write-helper 서브커맨드(atomic·스키마검증·포맷 단일원천)를 디스패치 오케 계층이 호출. **+ 계층별 소유**: 각 오케스트레이터 계층이 자기 직속 위임의 인덱스만 소유, 키는 완료 클레임에 실려 상향. 상세 §13.4.
+5. **stale 키 GC → 타이머 없음 + 언지형(user-notify) (확정 — 핵심 정련).** 디스패처 아이템은 merge 대기로 며칠 열려 있는 게 정당하므로 타이머/TTL 자동삭제는 오삭제를 낳는다. 대신 2층 모델: 내구 진실=사이클 로그(CYCLE-END까지 — 로컬 이어받기+MERGE 이후), 에페메랄 인덱스는 시작 시 로그에서 REBUILD(휘발 안전). 오래-열림/고아는 소유 계층이 사용자에게 표면화 — 로컬 오케는 사용자 본인 일을 알림, central은 무시(정보용), 진짜 고아도 user-notify→사람이 정리 결정(자동삭제 없음, 프레임워크 테넷). 상세 §13.3 2층 모델·§13.4 GC.
+
+### 13.9 양방향 참조 (본 절 추가분)
+
+| 문서 | 관계 |
+|---|---|
+| `specs/EVOLUTION.md` DP-9 §3.E·§4.3 | 본 제안의 거버넌스 경로 — 공유 룰북 귀속분은 자동 아님, 원칙 8 PR/머지(사람 큐레이션) |
+| `specs/CYCLE-LOG.md` §2.1·§5·§10.3 | append-only 역사(audit.md)와 ephemeral 인덱스의 분리 원천 — CYCLE-END/REOPEN 의미론 |
+| `templates/enforce.template.py` | §13.6 코드 변경 **구현됨** — 키 획득(env/CLI+active-포인터)·per-key 체크 3종·state_dir IO·write-helper 서브커맨드·reconcile-from-log·`INVARIANTS_CONTRACT="v2"` |
+| `templates/invariants.template.yaml` | 신규 체크 id·`requires`(§13.6-7·8) **반영됨** — 스키마 무변경, 계약 v2, 키드 3종 tier=warn |
+| `agents/SETTER.md` S8.8 | Phase 2/3 배선·SLOT 위빙(§13.7) — 트래커 결합분 |
+| `specs/VERIFICATION.md` | Phase 3 block 승격 전 라이브 파이어(POLICY-VERIFY) |
+
+---
+
 ## 변경 이력
 
 본 명세 v1.0 — 불변식 강제 규율(POLICY-INVARIANT) 신설. STEP 1(템플릿·명세만): `invariants.template.yaml`(선언 단일 원천 + `cycle-must-log` 파일럿 + `<SLOT>`), `enforce.template.py`(중립·degraded-safe 범용 엔진, stdlib-only YAML 폴백), 본 명세 3종 추가.
@@ -338,5 +554,11 @@ STEP-2b(드라이런 결함 수정 + 안정성/failover 하드닝): 신규 사�
 STEP-2a(실제 배선): (1) **훅 계약 확정** — 공식 문서(`code.claude.com/docs/en/hooks.md`, v2.1.2xx, 2026-09-11 fetch) 대조로 §11.4를 확정. warn 형태 정합, **block은 exit code 2가 신뢰 가능한 차단 채널**(exit 0 + decision:block은 자문에 그칠 수 있음, 특히 PostToolUse 사후 실행), block은 Stop·PreToolUse에서 실효(PostToolUse는 warn 유지), **Stop-block 무한루프는 `stop_hook_active`로 가드**. (2) **엔진 반영** — `enforce.template.py` `emit()`/`main()`이 block tier → JSON + exit 2, Stop 재진입 시 block→warn 강등을 구현(서브프로세스 단위 검증: block→exit2+JSON / warn→exit0+JSON / 무발견·degraded→exit0+빈출력 / Stop+stop_hook_active→강등, 전부 통과). (3) **S8.8 이식** — §12 초안을 `agents/SETTER.md`에 라이브 절 S8.8로 이식(S8.7 (0)~(6) 미러, team=신규만·엔진/훅/개인=신규·합류·보수, 두 yaml co-locate §11.2.1, python 직접 호출 훅, S9 항목 17·파일트리·참조표 갱신). 잔여: block tier 라이브 파이어(새 세션/오케스트레이터).
 
 STEP-2c(라이브파이어 결함 수정 — env 필드 죽은 훅 + 게이트 사각 + PreToolUse): 잔여 라이브파이어가 드러낸 **PR-blocking 결함**을 수정했다. **F1**(env 필드 = silently dead): S8.8 (4)가 훅 command 객체의 `env` 필드로 `AIDLC_INVARIANTS_DIR`/`AIDLC_LOG_DIR`을 실었으나, **Claude Code 훅엔 `env` 필드가 없다**(공식 문서 인식 필드: type·command·args·if·timeout·statusMessage·shell·async·asyncRewake — env 없음, 훅은 부모 env 상속). env가 무시돼 `AIDLC_INVARIANTS_DIR`이 cwd 기본값→불변식 dir 못 찾음→exit 0 무강제로 **설치돼도 죽어 있었다.** 엔진에 CLI 인자 `--base-dir`(및 `--invariants-dir`/`--log-dir`) 추가(우선순위 CLI>env>기본; env는 하위호환 폴백), S8.8 (3)(4)·§11.1.1·§11.2·§12가 **`--base-dir` 자기완결·셸 독립** 명령으로 렌더하도록 개정(env 필드 삭제, 인라인 `VAR=x` 금지 — cmd.exe/powershell 비호환). **F2**(게이트 구조적 사각): (5) 게이트가 *자기가 env를 걸어* 서브프로세스를 돌려 죽은 라이브 훅을 놓쳤다(D5). 게이트를 **settings에 기록된 렌더 command 문자열 verbatim + `--log-dir`로 로그만 override**(env 미사용)로 바꿔, 호출 형태가 깨지면(env 재도입·경로 오류) FAIL하게 함. **F3**(block-tier 이벤트별 의미론): §11.4 (b)에 PreToolUse=실행 전 진짜 차단(deny) / Stop=턴 차단(exit 2) / PostToolUse=사후 자문뿐 표를 명시, S8.8·템플릿에 포인터. **F4**(PreToolUse 지원 — 구현): 엔진에 PreToolUse 이벤트 브랜치 추가(block→`permissionDecision:deny`+exit 0, warn→systemMessage+additionalContext, PostToolUse와 동일 `match`, 재진입 루프 없어 가드 불필요) — 실행 전 진짜 차단(강제성의 실체)을 제공. 템플릿에 PreToolUse 바인딩 옵션·게이트에 조건부 deny 픽스처 추가. 엔진 15개 서브프로세스 체크(F1 CLI·env폴백·block exit2·Stop guard 강등·cp949·match/no-match·degraded no-op·S1/S2 판별·PreToolUse deny/warn/no-fire) 전부 green.
+
+STEP-3 제안(§13 — 키드 상태머신 강제화, **검토용·미구현**): 현행 파일럿의 전역 boolean(모든 `cycles/*/audit.md`에 대한 "*어떤* 사이클이든 열림?", 작업 아이템/세션 키 없음)이 **동시성(공유 `dlc-meta`·다중 워커) 하에서 block-안전하지 않음**을 코드 대조로 확정하고(§13.1: `_open_cycles`/`check_*`가 전역, `main()`은 `session_id` 미추출, 체크 시그니처 `fn(log_dir)`에 세션 인자 없음 — Stop 교차오염 + PostToolUse 과소·Stop 과다), **키드 per-work-item 상태머신**을 제안. 키=`session_id`(훅 JSON 가시·중립) 1차 + 오케스트레이터 위임 id 오버라이드(티켓 키는 도메인 결합이라 기각), 인덱스=per-key 파일 `<state_dir>/<key>.json`(락 프리 동시성·O(1); 단일 JSON+락 대조), `state_dir`=gitignore ephemeral(역사는 audit.md append-only로 분리), 라이프사이클(dispatch→record→지상검증→done+레코드삭제+CYCLE-END+push 준원자), per-key 체크 3종(record-on-dispatch·valid-status-transition·log-on-done — 각기 *이 키만* 읽어 워커 격리 → block 안전), 마이그레이션(Phase1 현행 warn 유지 → Phase2 키드 warn 공존 → Phase3 키 스코핑 실측 후 block 승격), SETTER S8.8 SLOT 위빙. **엔진·템플릿 무수정** — §13.6이 함의된 코드 변경(키 획득·체크 컨텍스트화·state_dir IO·계약 v2)만 명세. 거버넌스=DP-9(EVOLUTION §3.E·§4.3 공유 귀속분 → 원칙 8 PR/머지 사람 큐레이션). 미결 5종은 §13.8(키 선택·쓰기측 키 획득·state_dir 추적·읽기/쓰기 경계·stale 키 GC).
+
+STEP-3 확정(§13 — 사용자 검토로 설계 확정, **여전히 미구현·스펙 온리**): 초기 STEP-3 제안(위 문단)의 미결 5종을 사용자 검토로 뒤집어/정련해 확정했다. **키를 `session_id`에서 per-work-item `delegation-id`(오케스트레이터가 디스패치/작업-시작마다 발급, UUID 또는 `<ticket-key>+<seq>`)로 변경** — 한 세션이 여러 작업 아이템(워커 `--resume`·장수 로컬 오케)을 처리해 `session_id`가 여럿을 뭉개기 때문. **`session_id`는 키가 아니라 조회 핸들로 강등** — 디스패처/worker-per-workitem은 런치 env `AIDLC_WORK_KEY`, 로컬 장수 오케는 `<state_dir>/active-<session_id>` 포인터로 현재 키를 훅에 전달(해석 우선순위 env/CLI > active-포인터 > 없음). **계층별 소유**(재귀 오케스트레이터 — 각 계층이 자기 직속 위임 인덱스만 소유, 키는 완료 클레임에 실려 상향; 디스패처 2계층 worked example·N계층 일반화). **읽기/쓰기 경계 = B**(CHECK 읽기전용 + 단일 write-helper 서브커맨드가 atomic·스키마검증·포맷 단일원천, 디스패치 오케 계층이 호출). **state_dir = ephemeral·gitignore·per-deployment**(배포 내 central+워커 공통, 머신 간 git 공유 안 함). **2층 상태 모델 + 타이머 없는 GC**(핵심 정련): 내구 진실=사이클 로그(CYCLE-END까지 — 디스패처는 로컬 이어받기+MERGE 이후, 자율 A·B 공통), 에페메랄 인덱스는 시작 시 로그에서 REBUILD(휘발 안전); TTL 자동삭제 없음(며칠 열린 merge 대기 오삭제 방지) — 오래-열림/고아는 소유 계층이 user-notify(로컬 오케=사용자 본인 일 알림, central=무시), 진짜 고아도 사람이 정리 결정. **유지**: per-key 체크 3종·마이그레이션 P1→P2→P3·계약 v1→v2·SETTER S8.8 SLOT 위빙·엔진 stdlib/중립/degraded. §13.6 함의 코드 변경에 env/포인터 키 획득·active-포인터 파일·write-helper 서브커맨드·reconcile-from-log 추가. §13.8을 미결→확정 결정으로 전환. **엔진·템플릿 여전히 무수정.**
+
+STEP-3 구현(§13 — 키드 상태머신 강제화, **IMPLEMENTED · Phase 2 · 계약 v1→v2**): 확정 설계(STEP-3 확정 §13.8)를 엔진·템플릿·SETTER S8.8에 실제 구현했다. **엔진(`enforce.template.py`)**: (1) 키 획득 `_resolve_work_key`(우선순위 `--work-key`/`AIDLC_WORK_KEY` > active-포인터(`_read_active_pointer`, stdin `session_id`로 조회) > None→no-op), 키 안전화 `_sanitize_key`(영숫자·`-`·`_`만, 길이 200, 경로 주입 방지); (2) state_dir IO `_read_state`/`_write_state`(atomic temp+rename `_atomic_write`), 해석 `_resolve_state_dir`(기본 `<base-dir>/.aidlc-state`); (3) **write-helper 서브커맨드** `record`·`transition`·`close`·`set-active`·`reconcile`(CHECK 경로는 읽기 전용 — Q4=B, 진입점 분리) — 스키마 검증·유효 전이 `_TRANSITIONS`(None→in-progress→additional-work↔·→done(verified 필수)→close-only) 강제, 잘못된 인자·무효 전이는 exit 2 거부; (4) `reconcile`이 열린 사이클 로그에서 인덱스 REBUILD(멱등·라이브 레코드 보존); (5) per-key 체크 3종(`keyed-record-on-dispatch`·`keyed-valid-status-transition`·`keyed-log-on-done`) — 각기 *이 키 파일만* 읽어 워커 격리; `evaluate()`가 ctx(`log_dir`/`state_dir`/`work_key`)를 체크에 전달(기존 두 체크도 ctx 수용); `_precondition_met`에 `keyed-state-dir` 추가; `INVARIANTS_CONTRACT="v2"` 상수. **템플릿(`invariants.template.yaml`)**: 키드 3종 추가(tier=warn·`requires:[local-log-layer, keyed-state-dir]`·per-key 스코프), 파일럿 `cycle-must-log` 유지(공존), 계약 헤더 v1→v2. **SETTER S8.8**: (0) `dlc-meta/.gitignore`에 `.aidlc-state/` 추가, (2.5) 키드 배선 절(state_dir 생성·키 프로비저닝 두 경로[디스패처 런치 env / 로컬 set-active 포인터]·write-helper 가용성·reconcile), (5) 게이트 키드 픽스처 K, 파일트리·S9 항목 17·provenance 헤더 v2. **구현 중 해소한 3갭(§13.6 구현 노트)**: reconcile=서브커맨드(시작 훅 아님, CHECK 읽기전용 유지)·pointer-write=`set-active` 서브커맨드·log-carries-delegation-id=best-effort(로그에 `Delegation:` 있으면 사용, 없으면 cycle-id 폴백+`key_source` 표기, 데이터 미조작; CYCLE-LOG 필드 추가는 follow-up). **검증**: 컴포넌트 서브프로세스 테스트 30건 green(키 해석 우선순위·per-key 격리·write-helper atomic·유효/무효 전이 거부·reconcile REBUILD·키드 체크 발화/no-op·전역 공존·degraded no-op·cp949·block exit2 무회귀), `py_compile` clean, 양 파서(PyYAML·미니) 동일 4불변식. **Phase 3(block 승격)·오케스트레이터 라이프사이클 규율·CYCLE-LOG `Delegation:` 필드는 스코프 아웃(follow-up).**
 
 향후 변경은 깃 PR/머지 (원칙 8).
