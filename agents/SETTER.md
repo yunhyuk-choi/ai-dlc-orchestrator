@@ -65,6 +65,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 ├── .gitattributes                 ← S8.5 — LF 정규화 강제 (POLICY-ENCODING)
 ├── invariants.team.yaml           ← S8.8 산출 — 팀 무결성 불변식 (공유·추적, **조건부** — 훅 강제 활성 시)
 ├── invariants.personal.yaml       ← S8.8 산출 — 개인 편의 불변식 (머신별·gitignore, dlc-meta 내 위치 — 엔진 단일 base_dir 정합 §11.2.1)
+├── .aidlc-state/                  ← S8.8 (2.5) — 키드 상태머신 인덱스 (§13.3 ephemeral·per-deployment·gitignore, <key>.json + active-<sid> 포인터)
 └── cycles/                        ← 사이클 로그 저장소 (S6 생성, 공유)
     └── .gitkeep                   ← S6 — 빈 디렉토리를 깃이 추적하게 하는 자리표
 
@@ -668,7 +669,7 @@ S5(Q5.3~Q5.6)에서 *이 시스템의* 커밋·브랜치·MR 규약을 수집해
 >
 > **(0) 추적 제외 선결 확인** (S8.7 (0)과 동일 규율) — 배선 전에 아래를 확인하고 빠졌으면 채운다:
 > - `{공유리포}/.gitignore` — `.claude/settings.local.json`·`.bak`은 S8.7이 이미 보장. 추가로 **`.claude/settings.local.json.corrupt`**((4)의 깨진-설정 백업 — 사용자 `permissions`를 담으므로 반드시 미추적; `settings.local.json*` 한 줄 글롭이 `.json`·`.bak`·`.corrupt`를 모두 덮는 것을 권장)·**`.claude/enforce.py`**(엔진 사본)·**`.claude/invariants-enforce.unavailable`**(마커)·**`.claude/__pycache__/`**(D4 — 스크립트 모드 happy path에선 바이트코드를 안 쓰지만, 무엇이든 `enforce`를 *import*하면 새어 추적된다. 방어적으로 항상 제외). 프레임워크 레포가 배포하는 `.gitignore`에 이것들이 이미 실려 있으면(권장·기본) 이 확인은 no-op이고 **커밋할 것이 없다**(happy path).
-> - `dlc-meta/.gitignore` — `invariants.personal.yaml`(+`invariants.personal.yaml.bak`). **team yaml(`invariants.team.yaml`)은 절대 제외하지 않는다**(공유 추적 대상).
+> - `dlc-meta/.gitignore` — `invariants.personal.yaml`(+`invariants.personal.yaml.bak`)·**`.aidlc-state/`**(§13.3 키드 인덱스 — ephemeral·per-deployment·머신간 git 공유 안 함. 커밋하면 팀원 머신 간 무의미한 in-flight 충돌·노이즈). **team yaml(`invariants.team.yaml`)은 절대 제외하지 않는다**(공유 추적 대상).
 > - 하나라도 빠지면 개인 산출물이 추적돼 팀원 머신 값이 서로 덮어쓰인다.
 > - **(D3) 공유 `.gitignore`는 *추적* 파일이다 — 개인 산출물과 커밋 규율이 다르다.** 위에서 `{공유리포}/.gitignore`·`dlc-meta/.gitignore`에 *실제로 줄을 추가했다면* 그건 **추적 변경**이므로 그대로 두면 dangling dirty 상태가 된다. 개인(gitignore) 산출물(`enforce.py`·개인 yaml·설정·마커)과 **명시적으로 구분해**, 추가한 `.gitignore` 변경만 별도로 스테이징·커밋한다(원칙 8 — 공유 변경은 git 단일 원천). `dlc-meta/.gitignore`는 S8.6 커밋·push 규율(fetch 선행)을 재사용해 커밋·push하고, `{공유리포}/.gitignore`는 그 팀의 공유 레포 변경 흐름(원칙 8 — PR/머지)을 따른다. **아무것도 추가하지 않았으면(기본 배포에 이미 있으면) 커밋 단계는 건너뛴다** — 멱등: 재실행이 새 dirty를 만들지 않는다.
 
@@ -696,7 +697,7 @@ S5(Q5.3~Q5.6)에서 *이 시스템의* 커밋·브랜치·MR 규약을 수집해
 > # invariants.team.yaml — 팀 무결성 불변식 (SETTER S8.8 렌더 산출물 · git 추적 · 공유)
 > # 원본 템플릿: ai-dlc-orchestrator/templates/invariants.template.yaml (스키마·병합·tier·체크 id 정본)
 > # 규율: specs/INVARIANT-ENFORCEMENT.md (POLICY-INVARIANT) · 엔진: {공유리포}/.claude/enforce.py
-> # INVARIANTS-CONTRACT: v1   ← 템플릿의 계약 값을 그대로 복사
+> # INVARIANTS-CONTRACT: v2   ← 템플릿의 계약 값을 그대로 복사(현재 v2 — 키드 상태머신 §13. 하드코딩 금지)
 > # 손수 편집하지 말고 SETTER S8.8 재실행으로 재생성한다 (POLICY-TEMPLATE-ADHERENCE).
 > # 개인 재조정은 invariants.personal.yaml (gitignore) 에 둔다 — 팀이 floor, 약화 불가.
 > ```
@@ -725,6 +726,21 @@ S5(Q5.3~Q5.6)에서 *이 시스템의* 커밋·브랜치·MR 규약을 수집해
 # 병합·personal-adjust 규칙은 templates/invariants.template.yaml 참조 (팀이 floor, 약화 불가).
 invariants: []
 ```
+
+**(2.5) 키드(keyed) 상태머신 배선 (§13 — 계약 v2. 기존 S8.8과 *공존*, 별도 파일 아님)** — 신규·합류·보수 모두. 아래는 위 team.yaml(파일럿 `cycle-must-log`)·엔진·훅과 *같은 산출물 위*에 얹히는 추가 배선이다. 엔진(`enforce.py`)은 이미 (2)에서 배치됐고 키드 체크·write-helper 서브커맨드를 *한 파일 안에* 담는다 — 새 실행자를 두지 않는다.
+
+- **state_dir 생성 (ephemeral·gitignore)** — `{메타 레포}/.aidlc-state/`를 만든다(엔진 기본값 `<base-dir>/.aidlc-state`와 일치, §13.3). (0)에서 `dlc-meta/.gitignore`에 `.aidlc-state/`가 이미 실렸는지 확인한다 — **이 디렉토리는 커밋하지 않는다**(per-deployment in-flight 상태, 머신 간 git 공유 안 함 — 크로스-머신 "열림" 원천은 내구 로그 `cycles/*/audit.md`다, 2층 모델). 못 써도 오류 아님 — 엔진은 `keyed-state-dir` 선결 불충족으로 키드 불변식을 조용히 SKIP(degraded no-op).
+- **write-helper 가용성** — 쓰기(record/transition/close/set-active/reconcile)는 *전부* `enforce.py` 서브커맨드다(§13.4 Q4=B — CHECK 경로는 읽기 전용). 오케스트레이터/디스패처 계층이 이걸 호출한다(인덱스 포맷을 손으로 재현하지 않는다). SETTER는 엔진 사본만 배치하면 서브커맨드가 자동으로 가용하다 — 훅 배선과 별개다(훅은 CHECK만 부른다).
+- **키(delegation-id)가 훅에 도달하는 두 경로 (§13.2 — 배치별)**:
+  | 배치 | 프로비저닝 (오케스트레이터 몫 — SETTER는 *경로만* 문서화) |
+  |---|---|
+  | **디스패처 / worker-per-workitem** | 오케스트레이터가 워커 스폰 시 **런치 env `AIDLC_WORK_KEY=<delegation-id>`** 를 심는다(이미 넘기는 `-w` 워크디렉토리 인자와 나란히). 훅이 상속 env에서 직접 읽는다 — 플러밍 최소. |
+  | **로컬 장수(long-lived) 오케스트레이터** | 세션 중 런치 env를 못 바꾸므로 오케스트레이터가 작업-시작마다 **`enforce.py set-active --session-id <sid> --work-key <delegation-id>`** 로 `<state_dir>/active-<sid>` 포인터를 쓴다. 훅이 stdin의 자기 `session_id`로 그 포인터를 해소한다(§13.2 결정 — 포인터 쓰기도 write-helper 경유). |
+  엔진 키 해석 우선순위: `AIDLC_WORK_KEY`/`--work-key` > active-포인터 > 없음(no-op). 키 부재는 차단이 아니라 degraded no-op이다.
+- **reconcile (시작 시 REBUILD)** — 세션/배포 시작 시 오케스트레이터가 `enforce.py reconcile --base-dir "{메타 레포}"` 를 돌려 내구 로그의 열린 사이클들로부터 에페메랄 인덱스를 재구성한다(§13.3 — 인덱스 휘발 안전). ⚠️ 현행 CYCLE-LOG 형식은 delegation-id를 담지 않아 reconcile은 best-effort다(cycle-id 폴백 — §13 IMPLEMENTED 노트의 갭). SETTER는 이 명령의 *가용성*만 보장하고, 실제 호출 시점은 오케스트레이터 라이프사이클(책임 7) 몫이다.
+- **tier·이벤트** — 키드 3종은 템플릿 기본 **warn**(Phase 2 — 전역 `cycle-must-log`와 공존). block 승격(Phase 3, §13.7)은 키 스코핑이 A↔B 격리를 실측 확인한 *뒤* 새 세션/오케스트레이터가 한다 — 본 배선에서 켜지 않는다.
+- **PostToolUse `match`(⑥)** — 키드 (a)`keyed-record-on-dispatch`의 `match`도 파일럿과 같은 ⑥ 도구명 집합(실제 서브 디스패치 도구)으로 적응한다. 모르면 템플릿 예시 placeholder 유지.
+- **트래커 결합분은 여전히 `<SLOT>`** — 범용 키드 3종(a·b·c)은 트래커 무참조라 템플릿 본문에 있지만, *키↔티켓 매핑·티켓 전이 강제* 같은 트래커 결합 불변식은 ②가 예일 때 SLOT에 SETTER가 짜 넣는다(§13.7 — 어댑터 `specs/ISSUE-TRACKER-ADAPTER.md`). OS/트래커 중립 유지.
 
 **(3) 훅 명령 생성 — OS 적응·자기완결(self-contained) (python 직접 호출 + CLI 인자)** — 인코딩은 **엔진 내부가 UTF-8로 강제**(stdout·stdin reconfigure + 버퍼 바이트 경로 + 선행 BOM 관용)하므로 **PowerShell 전용 UTF-8 래퍼가 불필요**하다(§11.1.1). 배포별 절대경로는 **CLI 인자 `--base-dir "{메타 레포}"`로 넘긴다**(env 필드 아님 — (4) 참조). `--base-dir` 하나가 `AIDLC_INVARIANTS_DIR`·`AIDLC_LOG_DIR` 둘을 모두 준다(§11.2.1 상 둘 다 `dlc-meta` 루트로 같다). SETTER는 python 실행자만 OS별로 고르고, **명령 문자열은 셸 독립**이다(`VAR=x` 인라인 env 문법 없음 → cmd.exe/powershell/bash 어디서든 동일하게 동작):
 
@@ -781,6 +797,7 @@ invariants: []
 | **P (1차 — PASS 필수)** | 렌더 PostToolUse command + `--log-dir EMPTY_LOG`, stdin = ⑥ `match`가 걸리는 훅 JSON | **warn JSON이 방출된다** — stdout 비어있지 않고 `systemMessage` 키를 담은 유효 JSON, **exit 0**. 빈 출력이면 **FAIL**(렌더/매치/경로 바인딩 중 하나가 안 실림 = D1 거짓통과, 또는 호출 형태 자체가 깨짐 = D5) → (6) |
 | S1 (2차) | 렌더 Stop command + `--log-dir EMPTY_LOG`, stdin `{}` | 빈 출력·exit 0(열린 사이클 없음 → 무발견) |
 | S2 (2차·판별) | 렌더 PostToolUse command + `--log-dir OPEN_LOG`, stdin = P와 같은 매치 JSON | 빈 출력·exit 0(열린 사이클 존재 → 체크가 위반 아님) — 체크가 *항상 켜지지 않고 판별함*을 증명 |
+| **K (2차·키드 — v2 배선 시 필수)** | 렌더 PostToolUse command + `--log-dir EMPTY_LOG` + `--state-dir <빈 임시 state 디렉토리>` + `--work-key K_TEST`(레코드 없음), stdin = ⑥ 매치 JSON | **`keyed-record-on-dispatch` warn JSON 방출**(exit 0) — 키드 렌더+키 획득이 됨을 증명. 이어 `enforce.py record --work-key K_TEST --state-dir <같은 임시>` 후 재실행 → **빈 출력·exit 0**(레코드 있으면 no-op = 판별). 임시 state-dir을 쓰므로 라이브 인덱스 비오염 |
 
 > **stdin JSON 만들기(⑥ 매치)**: 렌더된 `match`가 평범한 도구명 glob(예: `"Task"`)이면 `{"tool_name":"Task","tool_input":{}}`. `Tool:*substr*` 형태 glob이면 `{"tool_name":"Tool","tool_input":{"command":"…substr…"}}`처럼 `tool_input` 값에 substr을 넣는다(엔진이 `tool_name` 및 `tool_name:<tool_input 문자열값>` 후보로 fnmatch — §엔진 §6). ③이 모든 불변식을 껐으면 P는 성립하지 않으므로 (5)를 **`SKIPPED(비활성)`** 로 보고한다.
 
@@ -788,6 +805,7 @@ invariants: []
 - `settings.local.json`이 **유효 JSON**이고 기존 `UserPromptSubmit`(S8.7)·`permissions` 사용자 키가 보존됐는가.
 - 기록된 훅 command에 **`env` 필드가 없고**(무시되는 죽은 필드) 배포별 경로가 **`--base-dir` CLI 인자로** 실려 있는가 — D5 회귀 방어(누군가 `env`를 재도입하면 여기서 FAIL).
 - `{공유리포}`·`{메타 레포}`에서 개인 산출물(`enforce.py`·개인 yaml·설정·마커)이 추적되지 않고(gitignore 정상), **team yaml은 추적**되는가.
+- **(v2 키드)** `.aidlc-state/`가 `dlc-meta/.gitignore`로 무시되는가(`git -C "{메타 레포}" check-ignore .aidlc-state` 종료코드 0) — 추적되면 FAIL(ephemeral 상태를 커밋하면 안 됨, §13.3). 위 픽스처 **K**가 warn을 방출하는가(키드 렌더·키 획득 증명).
 - **(조건부·F4) PreToolUse block 바인딩을 렌더했다면**: 렌더된 PreToolUse command + `--log-dir EMPTY_LOG` + ⑥ 매치 stdin으로 서브프로세스 실행 → **deny JSON 방출**(`hookSpecificOutput.hookEventName=="PreToolUse"` + `permissionDecision=="deny"` + `permissionDecisionReason`, **exit 0**)을 단언한다. 이는 합성 시점 서브프로세스 단언이라 결정적이므로 게이트 PASS 조건에 포함된다(아래 라이브 파이어와 다름).
 - **block tier를 켰다면 라이브 파이어로 차단을 실측**(§11.4) — 단, *방금 배선한 세션의 즉석 파이어는 settings 워처 리로드 타이밍 탓에 불안정*하니 확정 파이어는 새 세션(오케스트레이터)에서 하고, 불일치 시 `emit()` 매핑을 정정하며 `INVARIANTS-CONTRACT` 버전을 올린다. (block *라이브* 파이어는 *2차 세션 몫*이라 (5) 게이트의 PASS 조건은 아니다 — 게이트 1차 단언은 어디까지나 P의 warn 방출이고, 위 PreToolUse deny 단언은 라이브가 아닌 서브프로세스 단언이다.)
 
@@ -886,7 +904,7 @@ python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslash
 | 14 | **(조건부, S5.8) 축적 지식 원천 기록 정합** | 운영 시: `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');t=open('ORCHESTRATOR.md',encoding='utf-8').read();print('## 축적 지식 원천' in t, '작업 후 갱신' in t)"` + 공용 스니펫 **[SEC]** / 미운영 시: 같은 명령의 첫 값이 `False` | 운영: 첫 값 `True` · [SEC] 통과 · Q5.8.4가 "쓰기 불가"면 둘째 값이 `False` / 미운영: 첫 값 `False`(섹션 자체가 없음). 어긋나면 **FAIL** |
 | 15 | **메타 레포 위치 마커** (S6.5) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');d=dict(l.split('=',1) for l in open(r'{공유리포}/.claude/dlc-meta-location.txt',encoding='utf-8').read().splitlines() if '=' in l and not l.startswith('#'));import os;print(d['META_REPO_PATH'], os.path.isdir(d['META_REPO_PATH']))"` + `git -C {공유리포} check-ignore .claude/dlc-meta-location.txt` | 경로가 실제 디렉토리(`True`) · check-ignore 종료코드 0(무시됨 — 추적되면 **FAIL**). 환경 제약으로 쓰지 못했으면 **`SKIPPED(degraded, 사유)`** (**FAIL 아님** — C FALLBACK. 다음 세션은 `CLAUDE.md` §0-2 폴백) |
 | 16 | **세션 자가점검 훅 설치 성사** (S8.7) | 채택한 **훅 명령을 실제로 실행**한 stdout + `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import json;json.load(open(r'{공유리포}/.claude/settings.local.json',encoding='utf-8'));print('valid json')"` + `git -C {공유리포} check-ignore .claude/settings.local.json .claude/orchestrator-selfcheck.txt` | stdout 첫 줄이 `[SELFCHECK {n}]`이고 무손상(항목 12 [ENC]로 재확인) · `valid json` · 기존 사용자 키 보존 · 두 개인 산출물 모두 무시됨 |
-| 17 | **(조건부, S8.8) 불변식 강제 배선 성사** | **1차(PASS 필수) — POSITIVE 픽스처**: **settings에 기록된 렌더 PostToolUse command 문자열을 그대로**(그 안의 `--base-dir "{메타 레포}"` 포함, env 필드 없음) 서브프로세스로 실행하되 끝에 **`--log-dir <빈 `cycles/`를 담은 임시 디렉토리>`만 덧붙이고** · stdin=⑥ `match`가 걸리는 훅 JSON(S8.8 (5) 픽스처 P·D5). **2차**: Stop+빈 cycles(픽스처 S1) 및 PostToolUse+열린 cycle(픽스처 S2). **(조건부 F4)** PreToolUse block 바인딩을 렌더했으면 렌더 PreToolUse command + `--log-dir 빈 cycles` + 매치 stdin → deny JSON 단언. + 기록된 command에 **`env` 필드 없음·경로는 `--base-dir`로**(D5 회귀 방어) + `git -C {공유리포} check-ignore .claude/enforce.py .claude/settings.local.json .claude/settings.local.json.corrupt` + `git -C {메타 레포} check-ignore invariants.personal.yaml` + `git -C {메타 레포} ls-files --error-unmatch invariants.team.yaml` + `settings.local.json`이 유효 JSON이고 `UserPromptSubmit`(S8.7) 보존 | **P가 warn JSON을 방출(비어있지 않은 유효 JSON에 `systemMessage`, exit 0)** — *이것이 렌더+매치+경로 바인딩(`--base-dir`)을 증명하는 1차 단언이다*. 빈 출력이면 **FAIL**(D1 거짓통과 — degraded-safe 엔진은 망가진 렌더에서도 빈 출력·exit 0을 내므로 무발견 런만으로는 반증 불가; 또는 D5 호출 형태 깨짐). 2차: S1·S2 모두 **exit 0·빈 출력**(F4 켰으면 PreToolUse deny JSON·exit 0) · 기록된 command에 `env` 필드 없음 · 개인 산출물(`enforce.py`·`invariants.personal.yaml`·설정·**`.corrupt` 백업**)이 모두 무시됨(check-ignore가 셋을 다 반환 = 다 무시됨) · **team yaml은 추적됨**(ls-files 종료코드 0) · `UserPromptSubmit` 보존. 훅 설치 불가/게이트 실패 degraded면 **`SKIPPED(degraded, 사유)`**(FAIL 아님 — EX-15 / C FALLBACK, `.unavailable` 마커 확인). 훅 미활성(인터뷰 ③ 전부 off)이면 `SKIPPED(비활성)` |
+| 17 | **(조건부, S8.8) 불변식 강제 배선 성사** | **1차(PASS 필수) — POSITIVE 픽스처**: **settings에 기록된 렌더 PostToolUse command 문자열을 그대로**(그 안의 `--base-dir "{메타 레포}"` 포함, env 필드 없음) 서브프로세스로 실행하되 끝에 **`--log-dir <빈 `cycles/`를 담은 임시 디렉토리>`만 덧붙이고** · stdin=⑥ `match`가 걸리는 훅 JSON(S8.8 (5) 픽스처 P·D5). **2차**: Stop+빈 cycles(픽스처 S1) 및 PostToolUse+열린 cycle(픽스처 S2). **(조건부 F4)** PreToolUse block 바인딩을 렌더했으면 렌더 PreToolUse command + `--log-dir 빈 cycles` + 매치 stdin → deny JSON 단언. **(v2 키드)** 픽스처 K — 렌더 PostToolUse command + `--log-dir 빈 cycles` + `--state-dir <빈 임시>` + `--work-key K_TEST` + 매치 stdin → `keyed-record-on-dispatch` warn 방출, 이어 `record --work-key K_TEST --state-dir <같은 임시>` 후 재실행 → 빈 출력(no-op 판별) + `git -C {메타 레포} check-ignore .aidlc-state`. + 기록된 command에 **`env` 필드 없음·경로는 `--base-dir`로**(D5 회귀 방어) + `git -C {공유리포} check-ignore .claude/enforce.py .claude/settings.local.json .claude/settings.local.json.corrupt` + `git -C {메타 레포} check-ignore invariants.personal.yaml` + `git -C {메타 레포} ls-files --error-unmatch invariants.team.yaml` + `settings.local.json`이 유효 JSON이고 `UserPromptSubmit`(S8.7) 보존 | **P가 warn JSON을 방출(비어있지 않은 유효 JSON에 `systemMessage`, exit 0)** — *이것이 렌더+매치+경로 바인딩(`--base-dir`)을 증명하는 1차 단언이다*. 빈 출력이면 **FAIL**(D1 거짓통과 — degraded-safe 엔진은 망가진 렌더에서도 빈 출력·exit 0을 내므로 무발견 런만으로는 반증 불가; 또는 D5 호출 형태 깨짐). 2차: S1·S2 모두 **exit 0·빈 출력**(F4 켰으면 PreToolUse deny JSON·exit 0; **v2면 K가 warn 방출→record 후 no-op**) · 기록된 command에 `env` 필드 없음 · 개인 산출물(`enforce.py`·`invariants.personal.yaml`·설정·**`.corrupt` 백업**·**`.aidlc-state/`**)이 모두 무시됨 · **team yaml은 추적됨**(ls-files 종료코드 0) · `UserPromptSubmit` 보존. 훅 설치 불가/게이트 실패 degraded면 **`SKIPPED(degraded, 사유)`**(FAIL 아님 — EX-15 / C FALLBACK, `.unavailable` 마커 확인). 훅 미활성(인터뷰 ③ 전부 off)이면 `SKIPPED(비활성)` |
 
 **항목 5b 모드별 합격 기준** (유도 표는 *인터뷰가 채우는데* 합류는 인터뷰를 통째로 스킵한다 — 그 간극을 여기서 닫는다):
 
