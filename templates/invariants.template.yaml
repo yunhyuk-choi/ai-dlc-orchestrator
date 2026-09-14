@@ -1,0 +1,116 @@
+# invariants.template.yaml — 불변식(invariant) 선언 단일 원천 (템플릿)
+#
+# > 인스턴스 산출물의 템플릿 (POLICY-TEMPLATE-ADHERENCE — 손수 자유 작성 금지).
+# >   SETTER가 STEP 2에서 이 템플릿을 두 개의 런타임 인스턴스로 조립한다:
+# >     - invariants.team.yaml      (팀 공유 · git 추적 — dlc-meta)         ← concern: integrity
+# >     - invariants.personal.yaml  (개인 · gitignore — {공유리포}/.claude)  ← concern: ergonomics
+# >   둘 다 로드되어 UNION 실행된다. 병합 규칙은 아래 「병합·personal-adjust」.
+# > 이 템플릿 자체는 *범용 불변식 + 슬롯*만 담는다. 환경 특화(예: 트래커 결합) 불변식은
+# >   <SLOT> 자리에 SETTER가 짜 넣는다 — 프레임워크 레포는 100% 중립(특정 트래커·프로젝트·회사 무참조).
+# > 규율 본문: specs/INVARIANT-ENFORCEMENT.md · 엔진: templates/enforce.template.py.
+# > 위치: ai-dlc-orchestrator/templates/invariants.template.yaml
+#
+# ── 계약 버전 ──────────────────────────────────────────────────────────────
+# INVARIANTS-CONTRACT: v1
+#   본문(스키마·체크 id·훅 JSON 계약)이 바뀌면 이 값을 올린다. SELF-CHECK 계약과 같은 사상.
+#
+# ── 불변식 1개 스키마 ──────────────────────────────────────────────────────
+#   id              : 안정적 kebab-case 식별자. *병합 키*. (필수)
+#   concern         : integrity | ergonomics
+#                       integrity  = 팀 (프로젝트 전역 · dlc-meta 추적 · invariants.team.yaml)
+#                       ergonomics = 개인 (사용자별 · gitignore · invariants.personal.yaml)
+#   event           : PreToolUse | PostToolUse | Stop  (단일 이벤트 불변식일 때. 여러 이벤트면 bindings)
+#   match           : (PreToolUse·PostToolUse 전용) "사이클 액션"을 신호하는 도구명 glob 목록.
+#                       엔진은 tool_name 및 "tool_name:<tool_input 문자열값>" 후보에 대해 fnmatch.
+#                       예: ["Task","Agent","Bash:*merge*"] — 서브 디스패치 / 머지 / 트래커 전이 등.
+#                       이 값들은 *예시 placeholder*이며 SETTER가 실제 도구·명령에 맞춰 적응한다.
+#   check           : 엔진이 구현한 명명된 체크 id (아래 「체크 id」).
+#   tier            : block | warn | advisory   (아래 「tier 의미론」)
+#   requires        : 실행 선결 조건 id 목록. 하나라도 불충족이면 이 불변식은 *조용히 SKIP*
+#                       (미충족 → 건너뜀 = 환경 중립 견고성. 로그 계층·트래커 config 부재 등).
+#                       현재 지원: ["local-log-layer"]  (cycles/ 로컬 로그 계층 존재).
+#   scope           : local   (팀 중립 불변식은 local만 — 엔진은 로컬 로그 계층만 읽는다. 네트워크·트래커 없음)
+#   personal-adjust : locked | escalate-only | full
+#                       개인 파일이 *이 팀 불변식*을 재조정할 수 있는 범위:
+#                         locked        = 개인이 손대지 못함 (팀 선언이 최종)
+#                         escalate-only = 개인이 tier를 *올리는* 것만 허용 (warn→block). 낮추기·타 필드 변경 금지
+#                         full          = 개인이 전체 필드 덮어쓰기 가능
+#                       (concern: ergonomics 불변식엔 무의미 — 팀 불변식에만 적용된다)
+#   bindings        : 이벤트 바인딩 목록. 한 불변식이 *여러 이벤트*에 걸릴 때 event/match/check 대신 사용.
+#     - event       : PreToolUse | PostToolUse | Stop
+#       match       : (PreToolUse·PostToolUse 전용) 위 match와 동일
+#       check       : 위 check와 동일
+#     (단일 이벤트면 bindings 없이 최상위 event/check/match만 둬도 된다)
+#
+# ── tier 의미론 (block 은 이벤트별로 실효 차단점이 다르다 — specs/INVARIANT-ENFORCEMENT.md §11.4) ──
+#   block    : 위반 시 훅이 *차단*. 단 어디서 진짜 막는지는 이벤트에 달렸다:
+#                PreToolUse  → 도구 실행 *전* 을 실제 차단(permissionDecision:deny). 강제성의 실체.
+#                Stop        → 턴 종료를 차단(decision:block + exit 2), reason 을 다음 턴에 되먹임.
+#                PostToolUse → 사후라 *자문뿐*(되돌리지 못함) → PostToolUse엔 block 대신 warn 을 쓴다.
+#              실행 전 진짜 차단이 필요한 block-tier 는 PreToolUse 에 바인딩한다.
+#   warn     : 위반 시 *비차단 경고*(systemMessage / hookSpecificOutput.additionalContext). 기본 권장값.
+#   advisory : no-op — 훅 출력 없음(가시화·기록만). 훅 미지원 degraded 환경의 폴백 등가값.
+#
+# ── 병합·personal-adjust (엔진이 강제) ────────────────────────────────────
+#   - team + personal 두 파일을 id로 병합. *팀이 floor(바닥)*.
+#   - 같은 id가 양쪽에 있으면 팀의 personal-adjust에 따른다:
+#       locked         → 팀 선언만 사용 (개인 항목 무시)
+#       escalate-only  → tier = max(팀, 개인). 그 밖 필드는 팀 고정
+#       full           → 개인이 통째로 덮어씀 (id는 유지)
+#   - 개인에만 있는 새 id = 자유(그대로 추가). 통상 concern: ergonomics.
+#
+# ── 체크 id (엔진 구현 — specs/INVARIANT-ENFORCEMENT.md §체크) ────────────
+#   open-cycle-record-exists : 사이클 액션이 있었는데 *열린* cycles/*/audit.md
+#                              (CYCLE-START 있고 CYCLE-END 없음, CYCLE-REOPEN 반영)이 하나도 없으면 위반.
+#   no-stale-open-cycle      : (Stop 백스톱) 열린 사이클 기록이 턴 경계를 넘겨 잔존하면 위반(가시화).
+#
+# ── PreToolUse block 바인딩 예시 (실행 전 진짜 차단이 필요한 block-tier) ──────────
+#   실행 전 도구를 실제로 막고 싶으면 tier: block + PreToolUse 바인딩을 쓴다. 형태:
+#     - id: <불변식 id>
+#       concern: integrity
+#       tier: block                    # PreToolUse block → permissionDecision:deny (실행 차단)
+#       personal-adjust: escalate-only
+#       scope: local
+#       requires: ["local-log-layer"]
+#       bindings:
+#         - event: PreToolUse
+#           match: [<도구명 glob…>]     # PostToolUse와 동일 규칙
+#           check: <체크 id>
+#   (PostToolUse에 block을 쓰면 사후라 자문에 그친다 — warn 을 쓰거나 PreToolUse로 옮긴다.)
+
+invariants:
+
+  # ── 파일럿 (범용) ──────────────────────────────────────────────────────
+  # cycle-must-log: 사이클 로깅을 "모델이 MD를 읽어 지키는 절차"에서
+  #   "프로그램(훅)이 강제하는 불변식"으로 승격한 파일럿. 로컬 로그 계층만 읽으므로
+  #   완전 중립이다 (트래커·프로젝트 상수 무참조).
+  - id: cycle-must-log
+    concern: integrity              # 팀 — dlc-meta에 추적
+    tier: warn                      # 기본 warn (block 아님 — 오탐 시 작업을 막지 않는다)
+    personal-adjust: escalate-only  # 개인은 warn→block 승격만 허용
+    scope: local
+    requires: ["local-log-layer"]
+    bindings:
+      # (1) 사이클 액션 발생 직후 — 열린 로그 기록이 없으면 경고
+      #     match는 예시 placeholder다. SETTER가 실제 서브 디스패치·머지·트래커 전이 도구명에 맞춰 적응한다.
+      - event: PostToolUse
+        match: ["Task", "Agent", "Bash:*merge*", "Bash:*commit*"]
+        check: open-cycle-record-exists
+      # (2) 턴 경계 백스톱 — 열린 사이클이 남아 있으면 가시화
+      - event: Stop
+        check: no-stale-open-cycle
+
+  # <SLOT: project-adaptive invariants>
+  # SETTER가 STEP 2에서 환경 특화(예: 트래커 결합) 불변식을 여기 짜 넣는다.
+  # 프레임워크 레포엔 *구현하지 않고 슬롯만* 둔다 — 특정 트래커/프로젝트/회사 무참조 유지.
+  # 예시(트래커 결합 — 어댑터가 requires/check를 주입, 여기선 주석):
+  #   - id: cycle-must-bind-ticket
+  #     concern: integrity
+  #     tier: warn
+  #     personal-adjust: escalate-only
+  #     scope: local
+  #     requires: ["local-log-layer", "issue-tracker-config"]
+  #     bindings:
+  #       - event: Stop
+  #         check: <어댑터가 제공하는 체크 id>
+  # <END SLOT: project-adaptive invariants>

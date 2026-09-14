@@ -1,7 +1,9 @@
-# Machine-local / personal tooling config (absolute machine paths, local state)
-.claude/settings.local.json
+# Machine-local / personal tooling config (absolute machine paths, local state).
+# The settings.local.json* glob covers the live file plus SETTER's .bak (S8.7/S8.8
+# rollback source) and .corrupt (S8.8 (4) malformed-settings backup — contains the
+# user's permissions, so it MUST stay untracked; POLICY-TRACKING).
+.claude/settings.local.json*
 .claude/settings.json
-.claude/settings.local.json.bak
 
 # Session self-check injection text — generated per machine by SETTER S8.7 from
 # templates/SELF-CHECK.template.md (the tracked single source). PERSONAL artifact:
@@ -17,6 +19,22 @@
 # Marker written when the hook cannot be installed in this environment (EX-15).
 # Suppresses repair-loop retries. PERSONAL and machine-specific by definition.
 .claude/orchestrator-selfcheck.unavailable
+
+# Invariant-enforcement personal artifacts — generated per machine by SETTER S8.8
+# from templates/enforce.template.py (the tracked single source). PERSONAL:
+# regenerated locally, never shared (POLICY-TRACKING). Shipping these here means
+# the S8.8 (0) precheck finds nothing missing on the happy path (no dirty tracked
+# change to commit). See specs/INVARIANT-ENFORCEMENT.md §11.2.2.
+.claude/enforce.py
+.claude/invariants-enforce.unavailable
+.claude/__pycache__/
+
+# Python bytecode caches anywhere in the repo — e.g. when templates/enforce.template.py
+# is imported/compiled in-place, Python leaks a .pyc under templates/__pycache__/.
+# (The .claude/__pycache__/ line above is the deployed-instance path; this is the
+# framework repo's own hygiene.)
+__pycache__/
+*.pyc
 
 # Node tooling noise
 node_modules/
