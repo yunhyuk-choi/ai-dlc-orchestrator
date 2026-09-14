@@ -44,6 +44,7 @@ YAML 파싱 결정 (요구됨)
 import fnmatch
 import json
 import os
+import re
 import sys
 
 # ---------------------------------------------------------------------------
@@ -343,16 +344,44 @@ def _iter_audit_files(log_dir):
     return out
 
 
+# 사이클 메타 entry 마커 인식 (CYCLE-LOG.md §5 / §10.3).
+#   실제 entry는 *줄 앞머리*의 타임스탬프 브래킷에 앵커된다 — 두 형식 모두 실측(dlc-meta):
+#     (A) 토큰이 브래킷 *뒤*  : `[2026-06-18 16:30] CYCLE-START` / `[2026-09-14] CYCLE-END (소급)`
+#     (B) 토큰이 브래킷 *안*  : `[2026-08-13 CYCLE-START]` / `[CYCLE-END]`
+#   ⚠️ 산문(prose)이 토큰을 *언급*만 하는 줄은 매치하면 안 된다 — 이게 이 앵커의 존재 이유다.
+#     예: `…선례의 CYCLE-REOPEN 패턴).`, `불변식 엔진(CYCLE-START/END/REOPEN 스캔)`,
+#         `> CYCLE-END(…) 이후 …`, `  Supersedes: [ts] CYCLE-END`, `  Next: CYCLE-END → gchat`,
+#         `  Target: [ts] CYCLE-END`(정정 참조 줄). 이들은 줄이 `[`로 시작하지 않으므로 걸러진다.
+#   substring 스캔은 이런 산문에 상태가 뒤집혀(실측: 11개 닫힌 사이클이 거짓 열림) 파일럿을
+#   영구 no-op으로 만들었다 — 그래서 브래킷-앵커 정규식으로 교체한다.
+_CYCLE_MARKER_RE = re.compile(
+    r"^\s*\["
+    r"(?:[^\]]*\b(?P<inside>CYCLE-(?:START|END|REOPEN))\b[^\]]*\]"   # (B) 브래킷 안
+    r"|[^\]]*\]\s*(?P<after>CYCLE-(?:START|END|REOPEN))\b)"           # (A) 브래킷 뒤
+)
+
+
+def _cycle_marker(line):
+    """줄이 실제 사이클 메타 entry면 'CYCLE-START'|'CYCLE-END'|'CYCLE-REOPEN' 반환, 산문/무관이면 None."""
+    m = _CYCLE_MARKER_RE.match(line)
+    if not m:
+        return None
+    return m.group("inside") or m.group("after")
+
+
 def _cycle_is_open(text):
-    """CYCLE-START/END/REOPEN 순차 스캔 상태머신. 마지막 상태가 열림이면 True.
-    (CYCLE-LOG.md §10.3 재오픈 정합 — REOPEN은 다시 열림으로 취급)."""
+    """CYCLE-START/END/REOPEN *엔트리 마커* 순차 스캔 상태머신. 마지막 상태가 열림이면 True.
+    (CYCLE-LOG.md §5 형식 · §10.3 재오픈 정합 — REOPEN은 다시 열림으로 취급).
+    마커는 줄 앞머리의 타임스탬프 브래킷에 앵커해 인식한다(_cycle_marker) — 산문 속 토큰
+    언급은 상태를 뒤집지 않는다. 한 줄엔 마커 종류가 하나뿐이라 END의 elif도 안전하다."""
     open_ = False
     for line in text.splitlines():
-        if "CYCLE-START" in line:
+        kind = _cycle_marker(line)
+        if kind == "CYCLE-START":
             open_ = True
-        elif "CYCLE-REOPEN" in line:
+        elif kind == "CYCLE-REOPEN":
             open_ = True
-        elif "CYCLE-END" in line:
+        elif kind == "CYCLE-END":
             open_ = False
     return open_
 
