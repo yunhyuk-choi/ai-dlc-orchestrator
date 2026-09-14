@@ -29,6 +29,13 @@
 .claude/invariants-enforce.unavailable
 .claude/__pycache__/
 
+# Python bytecode caches anywhere in the repo — e.g. when templates/enforce.template.py
+# is imported/compiled in-place, Python leaks a .pyc under templates/__pycache__/.
+# (The .claude/__pycache__/ line above is the deployed-instance path; this is the
+# framework repo's own hygiene.)
+__pycache__/
+*.pyc
+
 # Node tooling noise
 node_modules/
 
