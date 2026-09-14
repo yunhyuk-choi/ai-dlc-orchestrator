@@ -16,6 +16,9 @@
 #   v1 → v2: 키드(keyed) per-work-item 상태머신 체크 3종(keyed-record-on-dispatch /
 #            keyed-valid-status-transition / keyed-log-on-done)과 선결 조건 keyed-state-dir 추가
 #            (specs/INVARIANT-ENFORCEMENT.md §13 — 동시성-안전 강제. 엔진 INVARIANTS_CONTRACT 상수와 짝).
+#   ⚠️ Phase 2→3 (키드 3종 tier warn→block, 이벤트 재바인딩)은 **계약을 올리지 않는다** — 체크 id
+#      집합·스키마·훅 JSON 형태(emit())가 그대로이고 오직 tier/event 값만 바뀐 *정책* 변경이라
+#      엔진(v2)이 이미 block 을 지원한다. 그래서 계약은 v2 유지 (specs/INVARIANT-ENFORCEMENT.md §13.7).
 #
 # ── 불변식 1개 스키마 ──────────────────────────────────────────────────────
 #   id              : 안정적 kebab-case 식별자. *병합 키*. (필수)
@@ -72,11 +75,12 @@
 #    읽는다 → 워커 B가 워커 A의 열린 키에 영향받지 않음(동시성-안전) → block-tier 안전(Phase 3).
 #    키 없음·state_dir 없음·레코드 malformed → no-op(차단 아님). 키는 오케스트레이터가 디스패치마다
 #    발급하는 delegation-id(§13.2) — env AIDLC_WORK_KEY / --work-key / active-포인터로 훅에 도달.]
-#   keyed-record-on-dispatch      : (PostToolUse) 디스패치했는데 이 키의 레코드가 없으면 위반(위임=기록).
-#   keyed-valid-status-transition : (PostToolUse/Stop) 이 키가 검증 없이 done(verified != true)이거나
-#                                    status가 유효 집합(in-progress·additional-work·done) 밖이면 위반.
-#   keyed-log-on-done             : (Stop) 이 키가 done인데 대응 CYCLE-END 로그 흔적이 없거나,
-#                                    아직 in-progress/additional-work인 채 턴 경계를 넘기면 위반.
+#   keyed-record-on-dispatch      : (PreToolUse — block) 이 키의 in-progress 레코드가 없는데 사이클-액션
+#                                    도구를 실행하려 하면 실행 *전* 차단(위임했으면 먼저 record 하라). Phase 3.
+#   keyed-valid-status-transition : (Stop — block 백스톱; 권위 강제는 write-helper 의 exit-2) 이 키가 검증
+#                                    없이 done(verified != true)이거나 status가 유효 집합 밖이면 위반.
+#   keyed-log-on-done             : (Stop — block) 이 키가 done인데 대응 CYCLE-END 로그 흔적이 없거나,
+#                                    아직 in-progress/additional-work인 채 턴 경계를 넘기면 위반. Phase 3.
 #
 # ── PreToolUse block 바인딩 예시 (실행 전 진짜 차단이 필요한 block-tier) ──────────
 #   실행 전 도구를 실제로 막고 싶으면 tier: block + PreToolUse 바인딩을 쓴다. 형태:
@@ -114,48 +118,58 @@ invariants:
       - event: Stop
         check: no-stale-open-cycle
 
-  # ── 키드(keyed) per-work-item 상태머신 (범용·중립 — §13.5) ────────────────
-  # 전역 파일럿(cycle-must-log)과 *공존*한다(Phase 2 — 둘 다 warn). 전역 boolean은 동시성
-  #   (공유 dlc-meta·다중 워커) 하에서 워커 A의 열린 사이클이 워커 B의 Stop을 거는 교차오염
-  #   때문에 block-안전하지 않다(§13.1). 키드 체크는 *이 키의 상태 파일만* 읽어 그 교차오염을
-  #   없앤다 → Phase 3에서 block 승격이 안전해진다.
+  # ── 키드(keyed) per-work-item 상태머신 (범용·중립 — §13.5) ── **Phase 3: block (§13.7)** ──
+  # 전역 파일럿(cycle-must-log)과 *공존*한다 — 단 전역은 warn 유지, 키드 3종은 block 이다.
+  #   전역 boolean은 동시성(공유 dlc-meta·다중 워커) 하에서 워커 A의 열린 사이클이 워커 B의 Stop을
+  #   거는 교차오염 때문에 block-안전하지 않다(§13.1) → 그래서 전역은 영구 warn.
+  # 키드 체크는 *이 키의 상태 파일만*(<state_dir>/<key>.json) 읽어 그 교차오염을 제거한다:
+  #   워커 B(자기 키 K2, 레코드 있음)는 워커 A(K1, 미기록)의 상태에 *영향받지 않는다* →
+  #   block 이 오직 위반한 그 작업 아이템 자신의 행동만 막는다(cross-work-item 부작용 0 — §13.5·§13.7
+  #   에서 A↔B 격리 실측 확인). 이것이 "부작용 없는 block"의 실체다.
   # 이 세 불변식은 로컬 파일(state_dir·audit.md)만 읽으므로 트래커 무참조·중립이다 → 템플릿 본문에 둔다.
   #   단 `match`의 실제 디스패치 도구명은 SETTER가 환경 적응(⑥ — 예시 placeholder를 치환).
-  # Phase 2는 **tier: warn** 이다. block 승격(§13.7 Phase 3)은 키 스코핑이 A↔B 격리를 실측
-  #   확인한 *뒤에만*, 실효 이벤트(PreToolUse=(a) / Stop=(b)(c))로 옮겨 켠다 — 여기선 켜지 않는다.
-  # requires 에 keyed-state-dir 를 두어 인덱스 미구성 배포에서 조용히 SKIP(중립 견고성).
+  # 이벤트 바인딩은 block 이 *실효 AND per-key-safe* 인 지점을 고른다(§11.4 (b)):
+  #   (a) → PreToolUse deny (실행 *전* 차단 — 미기록 작업 아이템 자신의 도구만 막음, 워커 B 무영향).
+  #   (b) → Stop block 백스톱 (권위 강제는 write-helper 의 exit-2 무효-전이 거부; Stop 은 *이 키* 판정).
+  #   (c) → Stop block (이 키가 done-without-log 이거나 열린 채 턴을 넘기면 턴 종료 차단; 이 키만 봄).
+  # PostToolUse 에는 block 을 켜지 않는다 — 사후라 자문뿐(§11.4 (b)). Stop-block 무한루프는 엔진의
+  #   stop_hook_active 강등 가드가 끊는다(§11.4 (c)). requires 의 keyed-state-dir 로 인덱스 미구성
+  #   배포에선 조용히 SKIP(중립 견고성) — degraded 는 여전히 no-op, 차단 아님.
+  # personal-adjust: escalate-only 는 이미 block 이므로 개인은 더 올릴 수 없다(사실상 locked 등가) —
+  #   구조 일관을 위해 유지. Phase 2(warn)로 되돌리려면 이 세 tier 만 warn 으로 내린다.
 
-  # (a) 위임(디스패치)했으면 이 키의 상태를 기록하라 — 안 하면 warn.
+  # (a) 위임(디스패치)했으면 *실행 전에* 이 키의 in-progress 레코드가 있어야 한다 — 없으면 PreToolUse deny.
   - id: keyed-record-on-dispatch
     concern: integrity
-    tier: warn                      # Phase 2. 실행 전 진짜 차단이 필요하면 PreToolUse+block(§13.7 Phase 3).
+    tier: block                     # Phase 3 — PreToolUse deny(실행 전 진짜 차단). per-key 라 부작용 0(§13.7).
     personal-adjust: escalate-only
     scope: local
     requires: ["local-log-layer", "keyed-state-dir"]
     bindings:
-      - event: PostToolUse
+      - event: PreToolUse           # 실행 *전* 을 막는 유일한 지점 — 미기록 작업 아이템 자신의 도구만 deny.
         match: ["Task", "Agent"]    # 예시 placeholder — SETTER가 실제 서브 디스패치 도구명으로 적응(⑥).
         check: keyed-record-on-dispatch
 
-  # (b) 이 키가 검증 없이 done 이거나 status 가 유효 집합 밖이면 warn — 검증 없이 완료로 건너뛰지 마라.
+  # (b) 이 키가 검증 없이 done 이거나 status 가 유효 집합 밖이면 block(Stop 백스톱) — 검증 없이 완료로
+  #     건너뛰지 마라. *권위 강제*는 write-helper 서브커맨드가 이미 한다(무효 전이·검증 없는 done →
+  #     exit 2 거부, §13.4). 이 Stop 체크는 손상/외부 조작된 레코드가 턴을 넘기지 못하게 하는 백스톱이며
+  #     *이 키만* 읽어 per-key-safe 하다. PostToolUse 바인딩은 두지 않는다(사후 block = 자문뿐, §11.4).
   - id: keyed-valid-status-transition
     concern: integrity
-    tier: warn
+    tier: block
     personal-adjust: escalate-only
     scope: local
     requires: ["local-log-layer", "keyed-state-dir"]
     bindings:
-      - event: PostToolUse
-        match: ["Task", "Agent", "Bash:*merge*", "Bash:*commit*"]
-        check: keyed-valid-status-transition
       - event: Stop
         check: keyed-valid-status-transition
 
-  # (c) 이 키가 done 인데 CYCLE-END 흔적이 없거나, 아직 열린 채 턴 경계를 넘기면 warn(가시화·백스톱).
-  #     전역 no-stale-open-cycle 과 달리 *이 키만* 보므로 A의 열림이 B의 Stop을 걸지 않는다(§13.5).
+  # (c) 이 키가 done 인데 CYCLE-END 흔적이 없거나, 아직 열린 채 턴 경계를 넘기면 block(턴 종료 차단).
+  #     전역 no-stale-open-cycle 과 달리 *이 키만* 보므로 A의 열림이 B의 Stop을 걸지 않는다(§13.5) →
+  #     block-safe. Stop-block 재진입은 stop_hook_active 로 warn 강등돼 무한루프를 끊는다(§11.4 (c)).
   - id: keyed-log-on-done
     concern: integrity
-    tier: warn
+    tier: block
     personal-adjust: escalate-only
     scope: local
     requires: ["local-log-layer", "keyed-state-dir"]

@@ -208,6 +208,10 @@ DP-3 + DP-5 결과를 통합 `execution-plan.md`로 산출 → 사용자 검토 
 ### 6.1 실행 절차
 
 ```
+[0] (불변식 활성 시) 디스패치 전 키드 레코드 — §6.4
+   - delegation-id 발급 → (로컬) set-active 포인터 → record --status in-progress
+   - (스폰 워커) 런치 env AIDLC_WORK_KEY=<delegation-id>
+       ↓
 [1] DAG 따라 호출 (병렬 그룹 동시, 직렬 단계 순차)
        ↓
 [2] 각 호출 응답 대기
@@ -218,6 +222,7 @@ DP-3 + DP-5 결과를 통합 `execution-plan.md`로 산출 → 사용자 검토 
    - 정합성 체크 (서브 4-튜플 두 번째 필드)
    - 성공·실패 여부 (AWS audit.md)
    - cross-repo 결합점 검증 (오케스트레이터 직접)
+   - 지상검증(POLICY-VERIFY) 후 → (불변식 활성 시) transition — §6.4
        ↓
 [4] 다음 분기 판단
    - 정상 → 다음 STEP 또는 다음 사이클 반복
@@ -235,6 +240,20 @@ DP-3 + DP-5 결과를 통합 `execution-plan.md`로 산출 → 사용자 검토 
 ### 6.3 결과 통합 (audit.md 흡수)
 
 각 레포의 `aidlc-docs/audit.md` → 시스템 단위 `dlc-meta/cycles/{cycle-id}/audit.md`로 통합 집계 (책임 7). 형식·필드는 CYCLE-LOG.md 본문 위임.
+
+### 6.4 키드 불변식 상태 전이 (조건부 — 불변식 강제 활성 시)
+
+> 불변식 엔진(`enforce.py`)이 배선되고 키드 체크가 **block**(§13.7 Phase 3)일 때, 위 실행 절차의 [0]·[3]·CLOSE 시점에 **write-helper**를 호출해 엔진이 판정할 레코드를 유지한다. **규율 정본은 `ORCHESTRATOR-AGENT.md` 책임 7-INV + `specs/INVARIANT-ENFORCEMENT.md` §13.4** — 여기서는 라우팅 단계별 대응만 표기한다(단일 원천, 복제 금지). 불변식 미활성·`state_dir` 부재면 이 절 전체가 no-op이다(degraded-safe).
+
+| 라우팅 시점 | write-helper 호출 | 강제하는 체크 |
+|---|---|---|
+| **[0] 디스패치 전** (§4 위임 확정) | 위임마다 `delegation-id` 발급 → (로컬) `set-active --session-id <sid> --work-key <id>` → `record --work-key <id> --status in-progress`. (스폰 워커면 런치 env `AIDLC_WORK_KEY=<id>`) | `(a) keyed-record-on-dispatch` = **PreToolUse deny** — record가 디스패치 도구보다 앞서야 실행이 안 막힌다 |
+| **[3] 지상검증 후** (DP-6) | `transition --work-key <id> --status <in-progress\|additional-work\|done>` (`done`은 `--verified true` 필수 — 검증 없는 done은 엔진이 exit 2 거부) | `(b) keyed-valid-status-transition` = Stop block 백스톱 |
+| **CLOSE** (§7 / 책임 9) | `audit.md CYCLE-END append → push → close --work-key <id>` (순서 고정 — 역사 먼저, §13.4) | `(c) keyed-log-on-done` = **Stop block** |
+| **세션/배포 시작** | `reconcile` (내구 로그 → 에페메랄 인덱스 REBUILD) | (백스톱 정확성) |
+
+- **per-key 격리 = 부작용 없음**: 각 체크는 *그 키의 상태 파일만* 읽으므로, 워커 A의 미기록/미종결이 워커 B의 디스패치·턴 종료를 막지 않는다(§13.5). block을 켜도 병렬 작업 아이템 간 교차 차단이 없다.
+- **재귀·계층별**: 각 계층은 자기 직속 위임만 소유하고, 키는 완료 클레임에 실려 상위로 전달된다(책임 7-INV / §13.4).
 
 ---
 
