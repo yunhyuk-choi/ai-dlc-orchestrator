@@ -62,6 +62,8 @@ Layer 2  레포 인스턴스    {각 레포}/         ← 실제 작업 영역 (
 ### 2.1 9개 책임
 
 1. **요구사항 분석·쪼개기** — 사용자 인텐트 수신, 자연어 → 작업 구조 분해
+
+   - **오버레이 참조 규율 (consult-overlay-before-work — 작업 개시 전 참조)** — 작업 아이템을 개시(위임)하기 전에 **그 사용자의 오버레이 진입점**(시스템 인스턴스의 `agents/<user>/` — 작동 스타일 + 교정 피드백 *인덱스*)을 읽는다. 이 층은 "어떤 환경에서 에이전트가 뜨든 같은 사용자 최적화를 받는다"는 목적으로 공유 메타 레포에 사는데, 읽지 않으면 그 목적이 조용히 깨진다(실측: 갱신이 멈춘 채 학습이 전부 머신 로컬 메모리로 샜다). **항상 읽는 것은 진입점(+인덱스)까지**이고 개별 상세 파일은 인덱스를 보고 필요할 때만 연다(컨텍스트 예산). 이 규율은 강제층으로 승격됐다 — 불변식 `overlay-consulted-before-work`(`specs/INVARIANT-ENFORCEMENT.md` §15)가 *위임 직전*에 이번 작업 아이템의 참조 여부를 검사·경고한다(훅은 대신 읽어 주지 않는다). 훅 부재(degraded) 환경에서도 규율은 본 노트로 상기된다. **읽은 뒤 사람 교정을 받았으면** 그 층의 기록 게이트(지속 지시만 기록, 일회성 예외는 기록 안 함)에 따라 오버레이를 갱신한다.
 2. **플랜 수립 + 사용자 컨펌** — STEP 적용·스킵 계획, execution-plan.md 산출, 사용자 검토 게이트
 3. **모든 서브 에이전트 호출·조율** — 우리 서브 (SETTER / REPO-SETTER / REPO-CREATOR / HANDOFF-WRITER / CYCLE-LOG / CYCLE-CLOSER / **CICD-SETTER** / **DEPLOY-AGENT** / **ISSUE-TRACKER-AGENT**) **+ 각 레포의 AWS 에이전트 (작업 위탁)**. 직렬·병렬 판단, 컨텍스트 격리. (원칙 7). **CICD-SETTER**(레포별 CI/CD 부착·통합 — REPO-SETTER 셋업 시 또는 운영 중 재부착)·**DEPLOY-AGENT**(적응형 환경 배포 — 착지 후 배포 단계, non-prod 자율 / prod 사람게이트 A-4)·**ISSUE-TRACKER-AGENT**(적응형 이슈 트래커 연동 — 사이클↔티켓 바인딩·범위 밖 요청 티켓, 트래커 config 보유 시)도 *조건부* 서브이며 그 호출 판단·조율 역시 본 책임이다 (SYSTEM-WORKFLOW STEP 9.5 / POLICY-ISSUE-TRACKING). **+ (조건부) 외부 하네스 온보딩 룰북 (작업 위탁)** — 하네스를 붙일 때는 *그 하네스 레포가 소유한 온보딩 룰북*을 서브로 실어 띄우고(우리 룰북 아님 — AWS 에이전트 위탁과 같은 모양), 4-튜플로 회수한 대시보드 좌표를 지상검증 후 `dlc-meta/ORCHESTRATOR.md` 「부착된 하네스」에 기록·커밋·push한다 (SETTER **S9.5-a** 준비 → 본 책임의 **S9.5-b** 디스패치·회수·기록. `specs/HARNESS-CATALOG.md`).
 4. **분기 판단** — 시스템 라우팅 + 레포 워크플로우 분기 모두 *런타임 판단*. 레포 워크플로우 분기 = AWS `execution-plan.md` 검토·승인 형태.
@@ -287,6 +289,10 @@ EX-1 우리 서브 실패 / EX-2 AWS 호출 실패 / EX-3 룰셋 mismatch / EX-4
 | `dlc-meta/REPO-MAP.md` | 시스템 도메인↔레포 매핑 | 단일 원천 (원칙 6) |
 | `dlc-meta/ISSUE-TRACKER.md` | 트래커 config 인스턴스 (조건부) | `tracker.type`+좌표의 단일 원천 — ISSUE-TRACKER-AGENT가 소비·(Jira) 캐시 |
 | `{공유리포}/.claude/dlc-meta-location.txt` | **개인**(gitignore) 메타 레포 위치 마커 — 절대 경로라 머신마다 다름 | 세션 시작 시 부트스트랩 판정 입력 (`CLAUDE.md` §0-2. SETTER S6.5 산출) |
+| `ai-dlc-orchestrator/.claude/agents/dlc-role.md` | 작업 서브 **탐색 스텁 — 파일 하나**. 역할 무관 포인터. `omitClaudeMd`로 본 룰북 상속 차단 | 서브 호출의 유일한 탐색 진입점. 역할은 지시로 지목(`role: <이름>`)하고, 스텁이 카탈로그에서 찾아 그 역할이 된다. **프론트매터 `tools`·`model`은 위임마다 내가 채우는 자리** — 절차는 ROUTING §4.3, 대조 강제는 불변식 `role-tools-match-on-dispatch`(INVARIANT-ENFORCEMENT §16) |
+| `ai-dlc-orchestrator/templates/subagents/CATALOG.template.md` | 역할 **카탈로그** 템플릿 (역할 이름 → 정의 파일 + 권장 티어) | SETTER S8.9 렌더 원천 |
+| `ai-dlc-orchestrator/templates/subagents/<role>.template.md` | 작업 서브 **역할 정의** 템플릿 (기본 3종) — 규율 단일 원천 | SETTER S8.9 렌더 원천 (POLICY-VERIFY 요약 등) |
+| `dlc-meta/subagents/CATALOG.md` + `<role>.md` | 역할 카탈로그·정의 인스턴스 (공유·추적) | 서브가 실행 시 읽는 정본. **역할 추가·제거는 인스턴스 자유**(카탈로그 한 줄 + 정의 하나, 프레임워크 무변경) |
 | `dlc-meta/cycles/{cycle-id}/audit.md` | 사이클 단위 결정 추적 | 결정·예외 기록 |
 | `dlc-meta/cycles/{cycle-id}/handoff-v{n}.md` | 핸드오프 산출 인스턴스 | EX-9 산출 위치 |
 | `{레포}/aidlc-rules/aws-aidlc-rules/core-workflow.md` | AWS AI-DLC 핵심 룰 | 책임 3 위탁 대상 룰 원천 |
