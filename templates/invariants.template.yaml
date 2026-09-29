@@ -19,6 +19,14 @@
 #   ⚠️ Phase 2→3 (키드 3종 tier warn→block, 이벤트 재바인딩)은 **계약을 올리지 않는다** — 체크 id
 #      집합·스키마·훅 JSON 형태(emit())가 그대로이고 오직 tier/event 값만 바뀐 *정책* 변경이라
 #      엔진(v2)이 이미 block 을 지원한다. 그래서 계약은 v2 유지 (specs/INVARIANT-ENFORCEMENT.md §13.7).
+#   ⚠️ overlay-consulted-before-work(§15) 추가도 **계약 v2 유지** — 같은 이유로 순수 가산이다:
+#      체크 2종(관찰·게이트)이 늘 뿐 기존 체크·emit() 훅 JSON·레코드 스키마 불변, 새 선결 조건 없이
+#      기존 keyed-state-dir 재사용, 선언(options.overlay) 미설정이면 조용히 SKIP 이라 이 개념이 없는
+#      배포에선 완전 no-op. 근거는 specs/INVARIANT-ENFORCEMENT.md §15.
+#   ⚠️ role-tools-match-on-dispatch(§16) 추가도 **계약 v2 유지** — 같은 이유로 순수 가산이다:
+#      체크 1종이 늘 뿐 기존 체크·emit() 훅 JSON·레코드 스키마 불변, 새 선결 조건 없음(requires 비움),
+#      선언(options.subagent_role) 미설정이거나 카탈로그·스텁 부재면 조용히 SKIP 이라 이 개념이 없는
+#      배포에선 완전 no-op. 근거는 specs/INVARIANT-ENFORCEMENT.md §16.
 #   ⚠️ repo-fresh-before-access(§14) 추가도 **계약 v2 유지** — 순수 가산(additive)이다: 기존 체크·
 #      emit() 훅 JSON·레코드 스키마 불변, 새 선결 조건 없이 기존 keyed-state-dir 재사용, 미지원 체크
 #      id 는 엔진이 no-op 스킵하므로 신·구 혼용도 안전. 근거는 specs/INVARIANT-ENFORCEMENT.md §14.
@@ -46,6 +54,45 @@
 #                         escalate-only = 개인이 tier를 *올리는* 것만 허용 (warn→block). 낮추기·타 필드 변경 금지
 #                         full          = 개인이 전체 필드 덮어쓰기 가능
 #                       (concern: ergonomics 불변식엔 무의미 — 팀 불변식에만 적용된다)
+#   options         : (선택) 그 체크 전용 튜닝 값 블록. 체크마다 인식하는 키가 다르고, **모르는 키는
+#                       조용히 무시**된다(구 엔진↔신 yaml·신 엔진↔구 yaml 양방향 안전). 부재면 기본값.
+#                       현재 사용: repo-fresh-before-access (§14.8) —
+#                         ttl_minutes         : 마커 TTL(분). 이 시간이 지나면 같은 세션·같은 작업
+#                                               아이템 안이어도 재판정. 기본 90. <=0 이면 TTL 비활성.
+#                         rearm_grace_minutes : 작업 아이템 개시(재무장) *직전*의 pull 도 그 작업의
+#                                               pull 로 쳐 주는 여유(분). 기본 5.
+#                         repos               : per-repo 오버라이드 목록 [{match: <glob|[glob…]>,
+#                                               ttl_minutes: <n>}]. 절대경로(구분자 '/')와 basename
+#                                               둘 다에 fnmatch. *첫 매치*가 이긴다.
+#                       overlay-consulted-before-work (§15) —
+#                         overlay.path          : 오버레이 디렉토리. 메타 레포 상대 또는 절대.
+#                                                 `{user}` 토큰은 사용자 식별자로 치환된다.
+#                         overlay.required      : 그 디렉토리 기준 상대 파일 목록. **전부** 읽어야
+#                                                 충족(= 항상 읽는 *진입점 집합*). 존재하지 않는
+#                                                 항목은 요구에서 빠진다(영구 미충족 방지).
+#                         overlay.user          : (선택) 사용자 식별자. CLI `--overlay-user` /
+#                                                 env `AIDLC_OVERLAY_USER` 가 우선.
+#                         overlay.grace_minutes : (선택) 재무장 직전의 읽기를 그 작업의 읽기로 쳐
+#                                                 주는 여유(분). 기본 5.
+#                         ⚠️ `overlay` 블록이 없으면 이 불변식은 **조용히 SKIP** — 엔진엔 어떤
+#                            디렉토리명·파일명·사용자 이름도 박혀 있지 않다(중립).
+#                       role-tools-match-on-dispatch (§16) —
+#                         subagent_role.catalog     : 역할 카탈로그 경로(메타 레포 상대 또는 절대).
+#                                                     기본 "subagents/CATALOG.md".
+#                         subagent_role.stub        : 탐색 스텁 경로(세션 cwd 상대 또는 절대).
+#                                                     기본 ".claude/agents/dlc-role.md".
+#                         subagent_role.stub_agent  : 스텁의 에이전트 이름. 지시에 역할 표기가 없을 때
+#                                                     *이 위임이 스텁을 겨냥하는지* 판별하는 데만 쓴다.
+#                                                     미설정이면 그 경우 조용히 SKIP(오탐 억제).
+#                         subagent_role.role_pattern: 지시에서 역할 이름을 꺼내는 정규식(그룹 1 = 이름).
+#                                                     기본은 `role: <이름>` / `역할: <이름>` 표기.
+#                         subagent_role.tier_models : {카탈로그 티어 문자열: 모델 이름} 매핑. **주면**
+#                                                     프론트매터 `model` 도 대조한다. 안 주면 모델은
+#                                                     검사하지 않는다 — 엔진엔 모델 이름이 없다(중립).
+#                         ⚠️ `subagent_role` 블록이 없거나 카탈로그·스텁 파일이 없거나 파싱에 실패하면
+#                            **조용히 SKIP** — 엔진엔 역할 이름·도구 이름·티어 값이 박혀 있지 않다.
+#                       ⚠️ 엔진엔 어떤 레포 이름도 박혀 있지 않다 — 공유 상태 레포처럼 "다른 주체가
+#                          계속 쓰는" 레포를 더 짧게 볼지는 *이 선언*이 정한다(프로젝트·스택 중립).
 #   bindings        : 이벤트 바인딩 목록. 한 불변식이 *여러 이벤트*에 걸릴 때 event/match/check 대신 사용.
 #     - event       : PreToolUse | PostToolUse | Stop
 #       match       : (PreToolUse·PostToolUse 전용) 위 match와 동일
@@ -85,13 +132,45 @@
 #   keyed-log-on-done             : (Stop — block) 이 키가 done인데 대응 CYCLE-END 로그 흔적이 없거나,
 #                                    아직 in-progress/additional-work인 채 턴 경계를 넘기면 위반. Phase 3.
 #   [git 최신성 — v2 가산 · §14]
-#   repo-fresh-before-access      : (PreToolUse — warn) 원격이 있는 레포를 이번 세션에 git pull(최신화)
-#                                    없이 읽/작업하려 하면 위반. fresh = .git/FETCH_HEAD mtime >= 세션
-#                                    앵커 mtime. 원격 없음·비레포·git 최신화 명령 자체는 SKIP(중립).
-#                                    per-repo·per-session 마커로 세션당 레포당 1회만 발동(매 접근마다 X).
+#   repo-fresh-before-access      : (PreToolUse — warn) 원격이 있는 레포를 *지금 이 작업 아이템*에서
+#                                    git pull(최신화) 없이 읽/작업하려 하면 위반.
+#                                    fresh = .git/FETCH_HEAD mtime >= deadline,
+#                                    deadline = max(세션 앵커, 재무장 epoch - grace, now - ttl) (§14.8).
+#                                    원격 없음·비레포·git 최신화 명령 자체는 SKIP(중립).
 #                                    reference-read(타 레포 구현·문서 조회) + 작업 레포 *양쪽*을 커버.
 #                                    훅은 pull 을 대신 실행하지 않는다 — 최신성만 검사→warn. requires:
 #                                    keyed-state-dir(세션 마커 저장). feedback-pull-before-work 를 강제층으로 승격.
+#                                    ⚠️ 재무장 지점 3개 (§14.8 — 도입판은 ①뿐이라 오래 사는 세션에서
+#                                       구조적으로 무력해졌다: 세션 초 fetch 한 번이 그 세션 내내 fresh):
+#                                       ① 세션 시작(앵커) ② **작업 아이템 개시** — write-helper 의
+#                                       `record`(§13.4 디스패치마다 찍는 그 지점)가 재무장 epoch 를 찍는다
+#                                       ③ 마커 TTL(options.ttl_minutes, 기본 90분) — 길어지는 작업의 백스톱.
+#                                    options 로 ttl_minutes·rearm_grace_minutes·repos[] 튜닝(위 스키마 참조).
+#   [사용자 오버레이 참조 — v2 가산 · §15]
+#   overlay-read-observe          : (PostToolUse — 관찰 전용, *절대 위반 없음*) 선언된 오버레이 파일을
+#                                    실제로 읽은 도구 호출을 보고 ephemeral 읽기 마커를 찍는다.
+#                                    사후 이벤트라 "읽기가 실제로 일어났다"가 참이다.
+#   overlay-consulted-before-work : (PreToolUse — warn) 작업 아이템 개시(위임·디스패치) 시점에
+#                                    *이번 재무장 창* 안의 읽기 마커가 없으면 위반.
+#                                    consulted = 마커 mtime >= deadline,
+#                                    deadline = max(세션 앵커, 재무장 epoch - grace)  ← §14.8 창 재사용.
+#                                    재무장 epoch 는 write-helper 의 `record`(디스패치마다 찍는 그 지점)가
+#                                    갱신하므로 창 = *작업 아이템* → "작업마다 한 번은 오버레이를 읽어라".
+#                                    ⚠️ §14(최신성)와 목적이 다르다 — §14 는 "stale 한가"(pull),
+#                                       §15 는 "참조했는가"(read). **pull 만 하고 안 읽으면 통과 안 된다**
+#                                       (판정 원천이 FETCH_HEAD 가 아니라 실제 읽기 관찰 마커다).
+#                                    requires: keyed-state-dir(마커 저장). options.overlay 미설정 → SKIP.
+#   [서브에이전트 역할 계약 — v2 가산 · §16]
+#   role-tools-match-on-dispatch  : (PreToolUse — warn) 위임 직전, 지시가 지목한 역할의 카탈로그 행과
+#                                    탐색 스텁 프론트매터(`tools`, 선택적으로 `model`)가 어긋나면 위반.
+#                                    카탈로그가 "역할별 도구"의 단일 원천인데 그 값이 *실제 스폰에
+#                                    반영됐는지*는 아무도 확인하지 않았다 — 호출자가 프론트매터를 안
+#                                    고치고 이전 위임의 잔재로 스폰하면 읽기 전용이어야 할 역할에
+#                                    쓰기 도구가 딸려 간다(조용히 틀리는 부류: 에러가 안 나고, 다음
+#                                    diff 를 볼 때까지 아무도 모른다).
+#                                    CHECK 경로는 **읽기 전용** — 프론트매터를 대신 고쳐 쓰지 않는다.
+#                                    카탈로그·스텁 부재·파싱 실패·선언 부재 → 조용히 SKIP(degraded-safe).
+#                                    지시에 역할 표기가 없으면 *스텁을 겨냥한 위임으로 확인될 때만* 발동.
 #
 # ── PreToolUse block 바인딩 예시 (실행 전 진짜 차단이 필요한 block-tier) ──────────
 #   실행 전 도구를 실제로 막고 싶으면 tier: block + PreToolUse 바인딩을 쓴다. 형태:
@@ -194,8 +273,16 @@ invariants:
   # 설계 = 옵션 A: 검사 후 warn(→ 이후 단계에서 block 승격). 훅은 git pull 을 *대신 실행하지 않는다* —
   #   FETCH_HEAD mtime 를 세션 앵커와 비교(값싼 stat, 네트워크 없음)해 stale 이면 경고만 하고, 실제
   #   pull 은 에이전트가 한다. 원격 없는 레포는 SKIP(agnostic — 로컬 전용 레포는 강제 대상 아님).
-  # per-repo·per-session 마커(<state_dir>/reposcan-*)로 세션당 레포당 1회만 발동 → 매 Read 마다 뜨지 않음.
+  # per-repo 마커(<state_dir>/reposcan-*)로 *재무장 창당* 레포당 1회만 발동 → 매 Read 마다 뜨지 않음.
   #   이 마커는 키드 work-item 레코드(§13.4)와 별개 네임스페이스이며 ephemeral·gitignore(휘발 안전).
+  # ⚠️ 재무장(§14.8) — 도입판은 재무장 지점이 *세션 시작 하나뿐*이라 오래 사는 세션에서 구조적으로
+  #   무력했다(실측: 7일 사는 세션에서 세션 초 fetch 한 번이 그 세션 내내 fresh 판정 → 공유 레포가
+  #   21커밋 앞서 나가도 훅이 한 번도 뜨지 않음. 오래 사는 세션 × 다른 주체가 계속 쓰는 레포 = 가장
+  #   위험한 조합이 정확히 사각지대였다). 그래서 재무장 지점을 둘 더 둔다:
+  #     ② 작업 아이템 개시 — write-helper 의 `record`(§13.4)가 재무장 epoch 를 찍는다. 그 순간부터
+  #        "이 작업 아이템에서 pull 했나"를 다시 묻는다 → pull-before-work 가 작업 단위로 강제된다.
+  #     ③ 마커 TTL(options.ttl_minutes) — 한 작업 아이템이 길어져도 그 시간이 지나면 재판정.
+  #   options 는 전부 선택이고 모르는 키는 조용히 무시된다(구/신 엔진↔yaml 혼용 안전).
   # 키드 3종과 같은 롤아웃 규율로 **warn 먼저** 도입한다(라이브 소크 후 block 승격은 다음 단계 — §14).
   #   PreToolUse warn 은 실행을 막지 않고 additionalContext/systemMessage 로 넛지한다(§11.4 (a)).
   # match 는 레포 파일에 닿는 도구다 — SETTER 가 실제 하네스 도구명으로 적응(⑥ — 예시 placeholder).
@@ -205,10 +292,92 @@ invariants:
     personal-adjust: escalate-only  # 개인은 warn→block 승격만 허용
     scope: local
     requires: ["keyed-state-dir"]   # 세션/레포 마커 저장소. 없으면 조용히 SKIP(degraded-safe).
+    options:
+      ttl_minutes: 90               # 마커 TTL — 작업 아이템이 길어져도 90분이면 재판정(§14.8 기본값 근거).
+      rearm_grace_minutes: 5        # 재무장 직전 수 분 안의 pull 은 그 작업의 pull 로 인정(pull→record→접근 오탐 방지).
+      repos: []                     # per-repo TTL 오버라이드. 기본은 비어 있다 — SETTER 가 배포에 맞춰 적응(⑥).
+      # ↑ 공유 상태 레포(다른 주체가 계속 쓰는 레포 — 시스템 상태·문서·지식 저장소 등)는 90분도 길다.
+      #   그런 레포엔 더 짧은 TTL 을 *선언*으로 준다. 엔진엔 어떤 레포 이름도 없다(프로젝트·스택 중립):
+      #     repos:
+      #       - match: ["*/<공유-상태-레포-디렉토리명>"]   # 절대경로(구분자 '/')·basename 둘 다에 fnmatch
+      #         ttl_minutes: 10
     bindings:
       - event: PreToolUse           # 접근 *전* 넛지 — reference-read/작업 양쪽을 접근 시점에 검사.
         match: ["Read", "Grep", "Edit", "Bash", "PowerShell"]  # 레포 파일에 닿는 도구. SETTER 가 적응(⑥).
         check: repo-fresh-before-access
+
+  # ── 사용자 오버레이 참조 (overlay-consulted-before-work · 범용·중립 — §15) ── warn (신규 도입) ──
+  # 공유 장기 메모리의 *사용자별 오버레이*(작동 스타일·누적 교정 피드백)는 "어떤 환경에서 에이전트가
+  #   뜨든 같은 사용자 최적화를 받는다"는 목적으로 팀 공유 레포에 둔다. 그런데 **작업 개시 시 그것을
+  #   읽게 만드는 장치가 없으면** 그 목적이 조용히 깨진다(실측: 오버레이가 갱신을 멈춘 채 학습이 전부
+  #   에이전트의 머신 로컬 메모리로 샜다 — 공유의 이유가 정확히 그 지점에서 무력화).
+  # 부착점은 키드 상태머신과 같은 seam 이다 — 위임(디스패치) 직전. `keyed-record-on-dispatch`(PreToolUse)가
+  #   이미 거기 서 있고, write-helper 의 `record` 가 그 자리에서 §14.8 재무장 epoch 를 찍는다. 그 epoch 를
+  #   그대로 "이번 작업 아이템" 창으로 재사용한다 → 작업마다 한 번은 오버레이를 읽어야 조용하다.
+  # 관찰(PostToolUse)과 게이트(PreToolUse)가 짝이다 — 관찰 바인딩이 읽기 마커를 찍고, 게이트가 그 마커의
+  #   신선도를 본다. **최신성(§14)과 목적이 다르다**: pull 만 하고 안 읽으면 통과시키지 않는다.
+  # 중립: 오버레이 위치·필수 항목·사용자 식별자는 전부 아래 options.overlay(및 CLI `--overlay-user`)로
+  #   들어온다. **아래처럼 options 를 비워 두면 이 불변식은 조용히 SKIP** 이므로, 이 개념이 없는 배포에선
+  #   완전 no-op 이다. SETTER 가 STEP 2 에서 배포에 맞춰 채운다(⑥ 환경 적응).
+  # 롤아웃 규율대로 **warn 먼저**(block 승격은 라이브 소크 후 별도 단계 — 키드 3종·§14 와 같은 사상).
+  #   오탐 비용도 작다 — 경고를 받고 하는 일이 *작은 진입점 파일 재독*이고 그게 요구 행동 자체다.
+  - id: overlay-consulted-before-work
+    concern: integrity
+    tier: warn                      # 신규 도입 — warn 먼저. 오탐이 작업을 막지 않는다.
+    personal-adjust: escalate-only  # 개인은 warn→block 승격만 허용
+    scope: local
+    requires: ["keyed-state-dir"]   # 읽기 마커 저장소. 없으면 조용히 SKIP(degraded-safe).
+    # options:                      # ← SETTER 가 배포에 맞춰 채운다(⑥). 없으면 이 불변식은 SKIP(no-op).
+    #   overlay:
+    #     path: "<오버레이 디렉토리 — 메타 레포 상대 또는 절대. '{user}' 토큰 치환 가능>"
+    #     required: ["<항상 읽는 진입점 파일…>"]   # 전부 읽어야 충족. 작고 상한 있는 것만 둔다.
+    #     grace_minutes: 5                        # 재무장 직전의 읽기를 그 작업의 읽기로 인정
+    #     # user: "<식별자>"                      # 선택 — 보통 훅 명령의 `--overlay-user` 로 준다
+    bindings:
+      # (관찰) 오버레이 파일을 실제로 읽으면 마커를 찍는다 — *위반을 내지 않는 순수 관찰*.
+      #        사후(PostToolUse)라 거부·실패한 읽기가 충족으로 세지 않는다.
+      - event: PostToolUse
+        match: ["Read", "Grep", "Bash", "PowerShell"]  # 파일을 읽는 도구. SETTER 가 적응(⑥).
+        check: overlay-read-observe
+      # (게이트) 위임(디스패치) *전* — 이번 재무장 창 안에 읽기 마커가 없으면 warn.
+      - event: PreToolUse
+        match: ["Task", "Agent"]    # 예시 placeholder — 키드 (a)와 같은 seam. SETTER가 적응(⑥).
+        check: overlay-consulted-before-work
+
+  # ── 서브에이전트 역할 계약 (role-tools-match-on-dispatch · 범용·중립 — §16) ── warn (신규 도입) ──
+  # 부착점은 키드 상태머신·오버레이와 같은 seam 이다 — 위임(디스패치) 직전 PreToolUse.
+  #   `keyed-record-on-dispatch` 가 이미 거기 서 있으므로 새 메커니즘을 만들지 않고 그 자리를 공유한다.
+  # 검사: ① 지시에서 역할 이름(`role: <이름>`)을 얻고 ② 카탈로그에서 그 역할의 도구·티어를 읽고
+  #   ③ 탐색 스텁 프론트매터가 그와 일치하는지 대조 ④ 어긋나면 발동. 엔진은 **대조만** 한다 —
+  #   프론트매터를 고쳐 쓰는 것은 호출자 몫이다(CHECK 경로 읽기 전용 경계, §13.4 Q4=B).
+  # tier 판단 — **warn 먼저**. `keyed-record-on-dispatch` 가 같은 seam 에서 이미 block 이지만 성격이
+  #   다르다: 그쪽의 판정 원천은 엔진 자신이 쓴 상태 레코드(형식이 엔진 소유라 오탐 여지가 거의 없고,
+  #   위반은 상태머신의 구멍이라 진행시키면 안 된다). 이쪽의 판정 원천은 **사람이 편집하는 마크다운
+  #   표와 프론트매터**라 표기 흔들림·런타임 도구명 개편에서 오탐이 날 수 있고, block 이면 그 오탐
+  #   하나가 *모든 위임*을 막는다. 그래서 집안 롤아웃 규율(키드 3종·§14·§15와 동일)대로 warn 으로
+  #   도입하고, 라이브 소크로 오탐률을 실측한 뒤 block 승격을 별건으로 판단한다. 위반 자체가 "조용히
+  #   틀리는 부류"이므로 승격 후보로서는 강한 편이다.
+  # requires 를 비운다 — 이 체크의 선결 조건은 로그 계층도 상태 디렉토리도 아니라 *카탈로그·스텁의
+  #   존재*이고, 그건 체크 내부에서 확인해 없으면 조용히 SKIP 한다(외부 선결 조건 id 를 새로 만들
+  #   이유가 없다). 어느 쪽이든 결과는 같다: 이 개념이 없는 배포에서 완전 no-op.
+  - id: role-tools-match-on-dispatch
+    concern: integrity
+    tier: warn                      # 신규 도입 — warn 먼저(block 승격은 라이브 소크 후). 오탐이 위임을 막지 않는다.
+    personal-adjust: escalate-only  # 개인은 warn→block 승격만 허용
+    scope: local
+    requires: []                    # 선결 조건 없음 — 카탈로그·스텁 부재는 체크 내부에서 조용히 SKIP.
+    options:
+      subagent_role:
+        catalog: "subagents/CATALOG.md"        # 메타 레포(--base-dir) 상대. SETTER 가 배포에 맞춰 적응(⑥).
+        stub: ".claude/agents/dlc-role.md"     # 세션 cwd 상대. 런타임 탐색 경로는 여기로 고정돼 있다.
+        stub_agent: "dlc-role"                 # 지시에 역할 표기가 없을 때 "스텁 겨냥"을 판별하는 데만 사용.
+        # role_pattern: "…"                    # 선택 — 기본은 `role: <이름>` / `역할: <이름>` 표기.
+        # tier_models:                         # 선택 — 주면 프론트매터 model 도 대조. SETTER 가 채운다(⑥).
+        #   "<카탈로그 티어 문자열>": "<이 배포의 모델 이름>"
+    bindings:
+      - event: PreToolUse           # 위임 *전* — 어긋난 채 스폰되기 전에 알린다.
+        match: ["Task", "Agent"]    # 키드 (a)와 같은 seam. SETTER 가 실제 디스패치 도구명으로 적응(⑥).
+        check: role-tools-match-on-dispatch
 
   # <SLOT: project-adaptive invariants>
   # SETTER가 STEP 2에서 환경 특화(예: 트래커 결합) 불변식을 여기 짜 넣는다.

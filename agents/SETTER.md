@@ -44,6 +44,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
     ├── ISSUE-TRACKER.template.md   ← 트래커 config 인스턴스 (S7.5 소비, 조건부)
     ├── invariants.template.yaml    ← 불변식 선언 (S8.8 소비 — team yaml 렌더 원본, 조건부)
     ├── enforce.template.py         ← 불변식 강제 엔진 (S8.8 소비 — enforce.py 사본 원본, 조건부)
+    ├── subagents/                  ← 서브에이전트 *카탈로그·역할 정의* 템플릿 (S8.9 소비)
     ├── STACK.template.md
     ├── WORKFLOW.template.md
     ├── DESIGN.template.md
@@ -66,6 +67,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 ├── invariants.team.yaml           ← S8.8 산출 — 팀 무결성 불변식 (공유·추적, **조건부** — 훅 강제 활성 시)
 ├── invariants.personal.yaml       ← S8.8 산출 — 개인 편의 불변식 (머신별·gitignore, dlc-meta 내 위치 — 엔진 단일 base_dir 정합 §11.2.1)
 ├── .aidlc-state/                  ← S8.8 (2.5) — 키드 상태머신 인덱스 (§13.3 ephemeral·per-deployment·gitignore, <key>.json + active-<sid> 포인터)
+├── subagents/                     ← S8.9 산출 — 서브에이전트 역할 카탈로그·정의 (공유·추적. 인스턴스 소유 — 역할 추가·제거 자유)
 └── cycles/                        ← 사이클 로그 저장소 (S6 생성, 공유)
     └── .gitkeep                   ← S6 — 빈 디렉토리를 깃이 추적하게 하는 자리표
 
@@ -113,6 +115,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 6.5. **(조건부) 이슈 트래커 config 포착·생성** — 시스템이 트래커를 운영하면(S5.7) `{공유리포}/templates/ISSUE-TRACKER.template.md`에서 인스턴스 트래커 config 파일 `{메타 레포}/ISSUE-TRACKER.md`를 생성해(S7.5 — POLICY-TEMPLATE-ADHERENCE, 손수 자유 작성 금지) 거기에 **`tracker.type`(jira/gitlab/github) + type별 좌표**(§2.2: jira=베이스 URL·프로젝트 키·email·statusNames / gitlab=host·projectIdOrPath·statusLabels·defaultAssignee / github=owner·repo·statusLabels·defaultAssignee[·milestone])·리포터/사용자·트리아지 담당자·**토큰 저장 위치(경로·변수명만 — 값 금지)** 를 기록 (POLICY-ISSUE-TRACKING). **(Jira 한정)** 필드/이슈타입/전이/보드/스프린트/에픽 맵 등 발견 메타는 런타임에 `ISSUE-TRACKER-AGENT`가 채우는 캐시 자리로 둔다(gitlab·github은 고정 스키마라 불요). 트래커 미운영이면 스킵 (조건부)
 6.7. **오케스트레이터 세션 자가점검 훅 설치** (S8.7 — 신규·합류·보수 **모두 수행**) — `{공유리포}/.claude/`에 주입문 파일 + `UserPromptSubmit` 훅을 생성해, 오케스트레이터 정체성이 *매 프롬프트마다 기계적으로 재주입*되게 한다 (컨텍스트 압축 후 표류 방어). 산출물은 개인(PERSONAL) — 공유하지 않는다. 계약·본문의 단일 원천은 `templates/SELF-CHECK.template.md`
 6.75. **불변식 강제 배선** (S8.8 — 엔진·훅·개인 yaml은 신규·합류·보수 **모두 수행**, team yaml은 *신규만*) — 중대·반복 유실 절차(파일럿: 사이클 로깅)를 *모델의 자발적 준수*에서 *프로그램(훅) 강제*로 승격한다(POLICY-INVARIANT). `templates/invariants.template.yaml`을 `{메타 레포}/invariants.team.yaml`(공유·추적)로 렌더하고, `templates/enforce.template.py`를 `{공유리포}/.claude/enforce.py`(개인)로 사본 배치하며, `PostToolUse`·`Stop` 훅을 `settings.local.json`에 **병합**(S8.7 훅 보존)한다. 훅 설치 불가면 degraded(마커 + advisory, 중단 금지 — EX-15). 규율 원천은 `specs/INVARIANT-ENFORCEMENT.md`
+6.78. **서브에이전트 역할 카탈로그·정의 렌더** (S8.9 — **부재·구버전일 때만**) — 오케스트레이터가 부르는 작업 서브의 *역할 카탈로그*와 *기본 역할 정의 3종*(검증자·구현자·조사자)을 `{메타 레포}/subagents/`(공유·추적)에 렌더한다. 런타임이 탐색하는 스텁은 `{공유리포}/.claude/agents/dlc-role.md` **파일 하나**이며 **프레임워크 자산이라 이미 커밋돼 있고 SETTER가 렌더하지 않는다** — 스텁엔 역할 목록조차 없고("카탈로그를 읽고 지시받은 역할이 되어라"뿐), 역할 집합과 내용은 인스턴스가 갖는다. 기본 3종은 출발점이며 **역할 추가·제거는 인스턴스 자유**(카탈로그 한 줄 + 정의 파일 하나, 프레임워크 무변경). `{메타 레포}/agents/`(사용자 오버레이)는 **불가침** — 이 단계는 `subagents/`만 다룬다
 6.8. **(조건부) 하네스 온보딩 위임 준비** (S5.9 인터뷰 + S9.5-a) — 프레임워크를 *바깥에서 구동*하는 선택적 외부 시스템(하네스)을 쓸 것인지 인터뷰에서 수집하고(S5.9), **팀 최초 설치자면** 검증 이후·종료 이전에 **그 하네스 레포를 직접 클론**하고 카탈로그가 알려주는 **온보딩 룰북의 실재를 확인**해, 오케스트레이터가 서브로 띄울 **디스패치 패키지**를 보고에 실어 반환한다(S9.5-a). 사용자에게 클론·CLI·문서 추적을 시키지 않는다. 목록·포인터는 `specs/HARNESS-CATALOG.md`, **온보딩 절차 자체는 각 하네스 레포의 룰북이 소유** — SETTER는 절차를 복제하지도, 서브를 직접 호출하지도 않는다(원칙 7 — 디스패치는 오케스트레이터, S9.5-b). 하네스 미사용이면 스킵 (조건부)
 
 7. 정합성 자체 체크 + 오케스트레이터에 결과 보고
@@ -166,7 +169,7 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 ```
 [페이즈 0] 모드 판정             →  S0        (보수 모드면 S6.5·S8.7·S8.8로 직행)
 [페이즈 1] 입력 수집 & 인터뷰   →  S1 ~ S5.10
-[페이즈 2] 자동 생성/합류        →  S6 ~ S8.8
+[페이즈 2] 자동 생성/합류        →  S6 ~ S8.9
 [페이즈 3] 검증 & 보고           →  S9 ~ S9.5  (S9.5 = 조건부 하네스 안내, 최초 설치자만)
 [페이즈 4] 종료                  →  S10
 ```
@@ -182,8 +185,8 @@ ai-dlc-orchestrator/                         ← 사내 공유 깃 리포지토�
 | 모드 | 수행 | 스킵 |
 |---|---|---|
 | **신규** | S1 ~ S9.5 전체 (인터뷰 S3~S5.10 포함 — S5.5·S5.7·S5.8·S5.9·S5.10은 각각 조건부. S7.5는 S5.7 조건부) | — |
-| **합류** | S1·S2·S6(clone)·**S6.5**·S8.5·**S8.7**·**S8.8**(team=clone 수신·엔진·훅·개인 yaml 설치)·S9 | S3~S5.10(인터뷰 **전부** — S5.5·S5.7·S5.8·S5.9·S5.10 포함)·S7·**S7.5**·S8·S8.6 (인스턴스 재생성 금지 — team yaml 재생성 금지)·**S9.5**(합류자는 하네스 no-op — 아래) |
-| **보수** | **S6.5 + S8.7 + S8.8(엔진·훅·개인 yaml만) + S9(해당 항목만)** | S1 ~ S9.5 **전부** (S8.8의 team yaml 렌더 제외 — 보수는 인스턴스 불가침) |
+| **합류** | S1·S2·S6(clone)·**S6.5**·S8.5·**S8.7**·**S8.8**(team=clone 수신·엔진·훅·개인 yaml 설치)·**S8.9**(정본=clone 수신·부재/구버전만 렌더)·S9 | S3~S5.10(인터뷰 **전부** — S5.5·S5.7·S5.8·S5.9·S5.10 포함)·S7·**S7.5**·S8·S8.6 (인스턴스 재생성 금지 — team yaml 재생성 금지)·**S9.5**(합류자는 하네스 no-op — 아래) |
+| **보수** | **S6.5 + S8.7 + S8.8(엔진·훅·개인 yaml만) + S8.9(정본=부재/구버전만) + S9(해당 항목만)** | S1 ~ S9.5 **전부** (S8.8의 team yaml 렌더 제외 — 보수는 인스턴스 불가침) |
 
 **보수 모드 보호 규칙**:
 
@@ -748,6 +751,8 @@ invariants: []
 - **`match`(⑥)** — 키드 (a)`keyed-record-on-dispatch`의 `match`(이제 **PreToolUse** 바인딩)도 파일럿과 같은 ⑥ 도구명 집합(실제 서브 디스패치 도구)으로 적응한다. 모르면 템플릿 예시 placeholder 유지.
 - **트래커 결합분은 여전히 `<SLOT>`** — 범용 키드 3종(a·b·c)은 트래커 무참조라 템플릿 본문에 있지만, *키↔티켓 매핑·티켓 전이 강제* 같은 트래커 결합 불변식은 ②가 예일 때 SLOT에 SETTER가 짜 넣는다(§13.7 — 어댑터 `specs/ISSUE-TRACKER-ADAPTER.md`). OS/트래커 중립 유지.
 
+- **(§15, 조건부) 사용자 오버레이 참조 배선** — 이 배포의 메타 레포에 *사용자별 오버레이 층*(에이전트 작동 방식의 사용자별 최적화 — 작동 스타일·누적 교정 피드백)이 있으면, 템플릿의 `overlay-consulted-before-work`에서 **주석 슬롯인 `options.overlay`를 채운다(⑥ 적응)**: `path`(메타 레포 상대, `{user}` 토큰 사용 가능)·`required`(**항상 읽는 진입점** 파일 목록 — 작고 상한 있는 것만)·`grace_minutes`. **오버레이 층이 없으면 options를 비운 채 둔다 → 그 불변식은 조용히 SKIP(완전 no-op)**. 사용자 식별자는 팀 yaml이 아니라 **(3)/(4)의 훅 명령 인자 `--overlay-user "<식별자>"`**로 준다(머신·사람별 값 — `--base-dir`와 같은 사상). 규율 원천은 `specs/INVARIANT-ENFORCEMENT.md` §15.
+
 **(3) 훅 명령 생성 — OS 적응·자기완결(self-contained) (python 직접 호출 + CLI 인자)** — 인코딩은 **엔진 내부가 UTF-8로 강제**(stdout·stdin reconfigure + 버퍼 바이트 경로 + 선행 BOM 관용)하므로 **PowerShell 전용 UTF-8 래퍼가 불필요**하다(§11.1.1). 배포별 절대경로는 **CLI 인자 `--base-dir "{메타 레포}"`로 넘긴다**(env 필드 아님 — (4) 참조). `--base-dir` 하나가 `AIDLC_INVARIANTS_DIR`·`AIDLC_LOG_DIR` 둘을 모두 준다(§11.2.1 상 둘 다 `dlc-meta` 루트로 같다). SETTER는 python 실행자만 OS별로 고르고, **명령 문자열은 셸 독립**이다(`VAR=x` 인라인 env 문법 없음 → cmd.exe/powershell/bash 어디서든 동일하게 동작):
 
 | 환경 | 명령 (형태) |
@@ -757,6 +762,7 @@ invariants: []
 
 > **탐지는 추정하지 말고 실행해서 확인**한다 — 고른 실행자로 `--event Stop --base-dir "{메타 레포}"`를 한 번 돌려 exit 0·무손상을 실측(S8.7 규율). 실행자 이름·경로만 다르고 **명령 골격은 OS 공통**이다. 새 환경이 나오면 같은 원칙으로 후보를 추가하되 **공유 룰북에 OS를 하드코딩하지 않는다**(적응형 어댑터 규율).
 > **이벤트 선택 — block tier가 어디서 실효되는지**(§11.4 block-tier 이벤트별 의미론): `PreToolUse`만 도구 실행 *전* 을 진짜 막는다(deny) / `Stop`은 턴 종료를 막는다(decision:block+exit 2) / `PostToolUse`의 block은 사후라 *자문*에 그친다 → PostToolUse엔 block을 켜지 말고 warn을 쓴다. `tier: block`을 고른 불변식은 그 실효 이벤트(PreToolUse 또는 Stop)에 바인딩한다.
+> **(§15 조건부) `--overlay-user "<식별자>"`를 `PreToolUse`·`PostToolUse` 명령 끝에 덧붙인다** — (2.5)에서 `options.overlay`를 채웠을 때만. 이 값은 *머신·사람별*이라 팀 공유 yaml이 아니라 개인 settings의 명령 인자가 1차 채널이다(`--base-dir`와 같은 사상 — 훅엔 `env` 필드가 없다). 미지정이면 그 불변식만 조용히 SKIP 된다(무해).
 > ⚠️ SELF-CHECK 훅(S8.7)의 Windows `powershell …` 명령을 **베끼지 않는다** — 그 명령은 Mac/Linux엔 `powershell`이 없어 깨진다. 불변식 훅은 python 직접 호출로 OS 중립이다(§11.1.1 플래그).
 
 **(4) 설정 병합** — 대상: `{공유리포}/.claude/settings.local.json` (개인 스코프).
@@ -842,6 +848,55 @@ invariants: []
 
 ---
 
+#### S8.9. 서브에이전트 역할 정의 렌더 (`{메타 레포}/subagents/` — 부재·구버전일 때만)
+
+> *목적*: 오케스트레이터가 부르는 **작업 서브에이전트**(검증자·구현자·조사자)에게 *역할 정의 정본*을 준다. 정본은 시스템마다 조정될 수 있는 **적응형 자산**이므로 Layer 1(메타 레포)이 갖는다.
+>
+> *스텁은 이 단계의 산출물이 아니다 — 프레임워크 자산이다.* 런타임의 에이전트 **탐색 경로는 `{공유리포}/.claude/agents/` 로 고정**돼 있고 추가 경로를 지정하는 공식 수단이 없다. 그 자리에는 **파일이 하나뿐**이다(`dlc-role.md` — 순수 포인터). 거기엔 프로젝트·조직·스택에 묶인 내용도, **역할 목록조차도 없다** — "카탈로그를 읽고 지시받은 역할이 되어라" 뿐이다. 따라서 스텁은 인스턴스 산출물이 아니라 **프레임워크와 함께 배포되는 실물**이며 이미 커밋돼 있다. **SETTER는 스텁을 렌더하지 않고, 프레임워크 레포에 손대지 않는다.**
+>
+> *그래서 두 층이다*: **탐색은 프레임워크의 실물 스텁 하나가 받고, 역할 집합과 내용은 메타 레포가 갖는다.** 역할을 더하는 일이 *카탈로그 한 줄 + 정의 파일 하나*로 끝나고 프레임워크는 하나도 바뀌지 않는다 — 역할 집합을 프레임워크에 박으면 네 번째 역할이 필요한 프로젝트가 프레임워크를 고쳐야 하고, 그 순간 범용 프레임워크가 아니게 된다 (원칙 6 — 단일 원천).
+>
+> *스텁의 `omitClaudeMd: true`* 는 서브가 상위 오케스트레이터 룰북을 상속해 *자기도 팀장*이라 판단하고 또 서브를 스폰하는 것을 막는다(실측된 실패 모드). 그것은 프레임워크 자산 쪽 규율이며 SETTER 소관이 아니다.
+
+**(1) 렌더 — 카탈로그 + 기본 역할 3종** — *공유(SHARED)*, 깃 추적. 대상은 메타 레포 **한 곳**뿐이다 (REPO-MAP의 레포 목록을 돌지 않는다).
+
+| 원본 템플릿 | 산출 |
+|---|---|
+| `{공유리포}/templates/subagents/CATALOG.template.md` | `{메타 레포}/subagents/CATALOG.md` |
+| `{공유리포}/templates/subagents/verifier.template.md` | `{메타 레포}/subagents/verifier.md` |
+| `{공유리포}/templates/subagents/implementer.template.md` | `{메타 레포}/subagents/implementer.md` |
+| `{공유리포}/templates/subagents/surveyor.template.md` | `{메타 레포}/subagents/surveyor.md` |
+
+- **기본 3종은 출발점이지 고정 집합이 아니다.** 렌더 후 카탈로그와 역할 정의는 **인스턴스 소유**이며, 그 프로젝트가 역할을 더하거나 빼는 것은 자유다(카탈로그 한 줄 + 정의 파일 하나). SETTER는 그 자유를 막지 않는다 — 아래 "부재·구버전일 때만" 규칙이 재실행으로 인스턴스가 더한 행을 지우지 않는다는 뜻이기도 하다. 이 사실을 S9 보고에 명시한다.
+
+- **변수 없음 — 템플릿의 「렌더 본문」 제목 아래 전체를 그대로 복사한다** (POLICY-TEMPLATE-ADHERENCE. 선례: `enforce.py`도 템플릿의 사본이다). 손수 작문·요약·재배열 금지.
+- **부재·구버전일 때만 쓴다 (모드 공통 규칙).** 산출 파일 첫머리의 `SUBAGENT-CONTRACT` 값이 템플릿의 계약 버전과 같으면 **손대지 않는다.** 이 한 규칙이 세 모드를 모두 덮는다 — 신규는 부재라 렌더되고, 합류는 clone 으로 받은 것을 그대로 쓰며(팀원 것 덮어쓰기 방지 — 인스턴스 보호), 보수는 템플릿이 올라갔을 때만 갱신한다.
+- **`{메타 레포}/agents/` 는 건드리지 않는다.** 그 디렉토리는 사용자 오버레이 영역으로 **불가침**이다. 이 단계는 **`subagents/` 디렉토리만** 다룬다 (이름이 비슷해 혼동하기 쉬우니 경로를 확인하고 쓴다).
+- **커밋·push** (실제로 쓴 경우만 — 공유 인스턴스 규율, POLICY-TRACKING): S8.6 이 끝난 뒤 렌더되므로 그 커밋에 실리지 않는다. `subagents/` 만 별도로 스테이징·커밋·push 한다 (S8.6 의 fetch 선행·검증 규율 재사용). push 까지 성사돼야 합류자가 clone 으로 받는다. 아무것도 쓰지 않았으면 커밋 단계도 건너뛴다(멱등 — 재실행이 새 dirty 를 만들지 않는다).
+
+**(2) 검증 (POLICY-VERIFY)** — 쓴 파일을 *다시 읽어* 실측한다. 클레임으로 대신하지 않는다.
+
+- 카탈로그 + 정의 3종이 `{메타 레포}/subagents/` 에 실재하고, 첫머리에 템플릿과 같은 `SUBAGENT-CONTRACT` 값이 실려 있다.
+- **카탈로그의 각 행이 가리키는 정의 파일이 실제로 존재**한다(상대 경로 해석 = 카탈로그가 있는 디렉토리 기준). 끊어진 행이 있으면 **FAIL** — 스텁이 그 역할을 찾다 멈춘다.
+- **컬럼 순서가 계약대로**인지(`역할 | 정의 파일 | 도구 | 티어 | 설명`) — 불변식 `role-tools-match-on-dispatch`(S8.8이 배선한 엔진, `specs/INVARIANT-ENFORCEMENT.md` §16)가 이 순서로 읽는다. 순서가 어긋나면 그 체크는 조용히 SKIP 되어 *강제가 사라진 줄도 모르게* 된다. 또한 S8.8이 렌더한 team yaml 의 `options.subagent_role.catalog`·`stub` 경로가 이 배포의 실제 위치를 가리키는지 확인한다(기본값 `subagents/CATALOG.md`·`.claude/agents/dlc-role.md`).
+- 템플릿 변수 `{...}` 잔존 없음 (POLICY-TEMPLATE-ADHERENCE). 템플릿 헤더(`> **인스턴스 산출물의 템플릿** …`)가 산출물에 섞여 들어가지 않았다 — 「렌더 본문」 아래만 복사됐는가.
+- **추적** 확인: `git -C {메타 레포} ls-files --error-unmatch subagents/CATALOG.md subagents/verifier.md` 등. 이번 실행이 렌더했다면 커밋·push 반영(`HEAD == @{u}`).
+- `{메타 레포}/agents/` 에 변경이 없다(사용자 오버레이 불가침 — `git status` 로 확인).
+- U+FFFD·떠도는 `?`·BOM 없음 (POLICY-ENCODING).
+
+**(3) degraded — 중단하지 않는다** (EX-15 와 같은 사상, **C FALLBACK**). 이 단계의 실패는 부트스트랩을 멈추지 않는다.
+
+| 실패 경로 | 행동 |
+|---|---|
+| 메타 레포 쓰기 불가(읽기전용·권한) | 렌더 스킵·사유 보고. 부트스트랩은 계속 |
+| 커밋·push 실패(원격 도달 불가 등) | 파일은 남기고 **미커밋 상태를 시끄럽게 보고**. 합류자가 못 받는다는 사실을 명시 |
+| 템플릿 누락(`templates/subagents/` 부재) | **시끄럽게 보고**(프레임워크 체크아웃 손상 신호). 그 항목만 스킵 |
+| 카탈로그만 없음(정의는 있음) | 카탈로그를 렌더한다. **카탈로그가 없으면 스텁은 어떤 역할에도 도달하지 못한다** — 정의가 다 있어도 무용지물이므로 우선 복구 대상 |
+
+> **정본이 없으면 무엇을 잃는가** — 그때 서브는 *규율 없이 계속하지 말고 멈추고 보고*한다(스텁 본문에 명시). 규율 없는 검증자는 멈추는 대신 "검증했다" 는 **클레임을 생산**하고, 그 클레임은 상류의 승계 판정에 그대로 먹혀 들어가 잘못된 안전 판정으로 굳는다. *보강 한 겹이 빠지는 것*(훅 부재 — EX-15)과 *규율 자체가 없는 것*은 다르게 다룬다. 그래서 **부트스트랩은 degraded 로 계속**하되, **그 상태에서 서브를 부르면 서브가 멈춘다** — 이 사실을 보고에 싣는다.
+
+---
+
 ### 페이즈 3 — 검증 & 보고
 
 #### S9. 정합성 자체 체크 + 오케스트레이터 보고
@@ -916,6 +971,7 @@ python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslash
 | 15 | **메타 레포 위치 마커** (S6.5) | `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');d=dict(l.split('=',1) for l in open(r'{공유리포}/.claude/dlc-meta-location.txt',encoding='utf-8').read().splitlines() if '=' in l and not l.startswith('#'));import os;print(d['META_REPO_PATH'], os.path.isdir(d['META_REPO_PATH']))"` + `git -C {공유리포} check-ignore .claude/dlc-meta-location.txt` | 경로가 실제 디렉토리(`True`) · check-ignore 종료코드 0(무시됨 — 추적되면 **FAIL**). 환경 제약으로 쓰지 못했으면 **`SKIPPED(degraded, 사유)`** (**FAIL 아님** — C FALLBACK. 다음 세션은 `CLAUDE.md` §0-2 폴백) |
 | 16 | **세션 자가점검 훅 설치 성사** (S8.7) | 채택한 **훅 명령을 실제로 실행**한 stdout + `python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace');import json;json.load(open(r'{공유리포}/.claude/settings.local.json',encoding='utf-8'));print('valid json')"` + `git -C {공유리포} check-ignore .claude/settings.local.json .claude/orchestrator-selfcheck.txt` | stdout 첫 줄이 `[SELFCHECK {n}]`이고 무손상(항목 12 [ENC]로 재확인) · `valid json` · 기존 사용자 키 보존 · 두 개인 산출물 모두 무시됨 |
 | 17 | **(조건부, S8.8) 불변식 강제 배선 성사** | **1차(PASS 필수) — POSITIVE 픽스처**: **settings에 기록된 렌더 PostToolUse command 문자열을 그대로**(그 안의 `--base-dir "{메타 레포}"` 포함, env 필드 없음) 서브프로세스로 실행하되 끝에 **`--log-dir <빈 `cycles/`를 담은 임시 디렉토리>`만 덧붙이고** · stdin=⑥ `match`가 걸리는 훅 JSON(S8.8 (5) 픽스처 P·D5). **2차**: Stop+빈 cycles(픽스처 S1) 및 PostToolUse+열린 cycle(픽스처 S2). **(v2 키드 Phase 3 — 필수)** 픽스처 **K** — 렌더 **PreToolUse** command + `--log-dir 빈 cycles` + `--state-dir <빈 임시>` + `--work-key K1` + 매치 stdin → `keyed-record-on-dispatch` **deny JSON**(`permissionDecision=="deny"`, exit 0) 방출, 이어 `record --work-key K1 --state-dir <같은 임시> --status in-progress` 후 재실행 → 빈 출력(allow 판별). 픽스처 **K-ISO** — 같은 임시 state-dir에서 `--work-key K2`(record됨) → 빈 출력(allow) = **K1 deny와 K2 allow 공존(per-key 무부작용)** + `git -C {메타 레포} check-ignore .aidlc-state`. **(조건부 F4)** 그 밖의 PreToolUse block 바인딩(SLOT)을 렌더했으면 같은 방식으로 deny JSON 단언. + 기록된 command에 **`env` 필드 없음·경로는 `--base-dir`로**(D5 회귀 방어) + `git -C {공유리포} check-ignore .claude/enforce.py .claude/settings.local.json .claude/settings.local.json.corrupt` + `git -C {메타 레포} check-ignore invariants.personal.yaml` + `git -C {메타 레포} ls-files --error-unmatch invariants.team.yaml` + `settings.local.json`이 유효 JSON이고 `UserPromptSubmit`(S8.7) 보존 | **P가 warn JSON을 방출(비어있지 않은 유효 JSON에 `systemMessage`, exit 0)** — *이것이 렌더+매치+경로 바인딩(`--base-dir`)을 증명하는 1차 단언이다*. 빈 출력이면 **FAIL**(D1 거짓통과 — degraded-safe 엔진은 망가진 렌더에서도 빈 출력·exit 0을 내므로 무발견 런만으로는 반증 불가; 또는 D5 호출 형태 깨짐). 2차: S1·S2 모두 **exit 0·빈 출력**(**v2 Phase 3면 K가 PreToolUse deny JSON 방출→record 후 allow(빈 출력); K-ISO는 allow — per-key 무부작용**; SLOT PreToolUse block 있으면 그 deny JSON·exit 0) · 기록된 command에 `env` 필드 없음 · 개인 산출물(`enforce.py`·`invariants.personal.yaml`·설정·**`.corrupt` 백업**·**`.aidlc-state/`**)이 모두 무시됨 · **team yaml은 추적됨**(ls-files 종료코드 0) · `UserPromptSubmit` 보존. 훅 설치 불가/게이트 실패 degraded면 **`SKIPPED(degraded, 사유)`**(FAIL 아님 — EX-15 / C FALLBACK, `.unavailable` 마커 확인). 훅 미활성(인터뷰 ③ 전부 off)이면 `SKIPPED(비활성)` |
+| 17.5 | **서브에이전트 카탈로그·정의 렌더 성사** (S8.9) | `{메타 레포}/subagents/`에 `CATALOG.md` + 정의 3종이 실재하고 **추적**됨(`git -C {메타 레포} ls-files --error-unmatch subagents/CATALOG.md subagents/verifier.md subagents/implementer.md subagents/surveyor.md`) · 첫머리에 템플릿과 같은 `SUBAGENT-CONTRACT` 값 · 템플릿 변수 `{...}`·템플릿 헤더 잔존 없음 · **카탈로그의 각 행이 가리키는 정의 파일이 실제 존재**(끊어진 행이 있으면 FAIL) · **컬럼 순서가 계약대로**(`역할 | 정의 파일 | 도구 | 티어 | 설명`) · *이번 실행이 렌더했다면* 커밋·push 반영(`HEAD == @{u}`) · `git -C {메타 레포} status --porcelain agents/`로 **`{메타 레포}/agents/`(사용자 오버레이) 무변경** 확인 | 전부 통과. **`agents/`에 변경이 있으면 FAIL**(불가침 영역 침범). 렌더 실패·쓰기 불가 degraded면 **`SKIPPED(degraded, 사유)`**(FAIL 아님 — EX-15 / C FALLBACK). 손대지 않았으면(계약 버전 동일) `기존 유지` |
 
 **항목 5b 모드별 합격 기준** (유도 표는 *인터뷰가 채우는데* 합류는 인터뷰를 통째로 스킵한다 — 그 간극을 여기서 닫는다):
 
@@ -928,7 +984,7 @@ python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslash
 - 항목 16 보충 — 미성사이되 **환경 제약으로 설치 불가**면(S8.7 (5) 절차 완료 — 마커 기록 또는 세션 1회 한도 적용) **`SKIPPED(degraded, 사유)`** 로 보고한다. **FAIL 아님** — EX-15는 C FALLBACK이고 부트스트랩은 성공이다.
 - 항목 16 보충 — 설치 가능한 환경인데 절차 미이행·검증 누락으로 미성사면 **FAIL** (POLICY-VERIFY — 클레임만 하고 실측을 안 한 경우가 여기다).
 
-> **보수 모드**에서는 위 항목 중 **15(위치 마커)·16(자가점검 훅)·17(불변식 배선 — 엔진·훅·개인 yaml만)** 과, 그것들이 만든 파일에 대한 **12(인코딩)** 만 검사·보고한다 (나머지는 손대지 않았으므로 판정 대상 아님. 보수는 team yaml을 렌더하지 않으므로 17의 team yaml 추적 확인은 clone/신규가 남긴 상태를 그대로 본다).
+> **보수 모드**에서는 위 항목 중 **15(위치 마커)·16(자가점검 훅)·17(불변식 배선 — 엔진·훅·개인 yaml만)·17.5(서브에이전트 카탈로그·정의 — 부재·구버전일 때만)** 과, 그것들이 만든 파일에 대한 **12(인코딩)** 만 검사·보고한다 (나머지는 손대지 않았으므로 판정 대상 아님. 보수는 team yaml을 렌더하지 않으므로 17의 team yaml 추적 확인은 clone/신규가 남긴 상태를 그대로 본다).
 > **합류 모드**에서는 인스턴스를 생성하지 않으므로 **10·11·13·14를 판정하지 않는다**(팀원이 만든 인스턴스는 SETTER 판정 대상이 아니다. team yaml도 clone 수신물이라 재생성 대상 아님 — 17은 clone된 team yaml 추적·개인 산출물 설치만 본다). 4·5·5b·6·12·15·16·17만 본다.
 
 **오케스트레이터에 보고할 4가지**:
@@ -942,11 +998,13 @@ python -c "import sys;sys.stdout.reconfigure(encoding='utf-8', errors='backslash
    - `{공유리포}/.claude/dlc-meta-location.txt` (**개인** — gitignore, 미추적. S6.5) + 기록한 `META_REPO_PATH`
    - `{공유리포}/.claude/orchestrator-selfcheck.txt`·`settings.local.json` (**개인** — gitignore, 미추적. S8.7) + 채택한 훅 명령과 **실행 검증 결과 원문**
    - `{메타 레포}/invariants.team.yaml` (**조건부** — 훅 강제 활성 시. 공유 — 커밋·push됨, S8.8) / `{메타 레포}/invariants.personal.yaml` (**개인** — gitignore, 미추적. S8.8)
+   - `{메타 레포}/subagents/CATALOG.md`·`verifier.md`·`implementer.md`·`surveyor.md` (공유 — 추적. 이번 실행이 렌더했으면 커밋·push됨, S8.9. 손대지 않았으면 "기존 유지(계약 버전 동일)"로 보고) + **역할 추가·제거는 인스턴스 자유**임을 안내
    - `{공유리포}/.claude/enforce.py` (**개인** — gitignore, 미추적. S8.8) + 채택한 PostToolUse·Stop 훅 명령과 **실행 검증 결과 원문**. degraded면 `{공유리포}/.claude/invariants-enforce.unavailable`
 2. **정합성 체크 결과** — 항목별 통과/실패 + 실패 사유
 3. **인터뷰 응답 원본** — Q2.x ~ Q5.x 사용자 답변
 4. **권고 다음 단계**:
    - 각 레포에 대해 **REPO-SETTER 호출** (권장 순서: 의존 root 가까운 레포부터)
+   - `{메타 레포}/ORCHESTRATOR.md`「서브 모델 티어 매핑」이 비어 있으면 채울 것 — 오케스트레이터가 서브를 부를 때 **어느 모델로 돌릴지 고르는 근거**다 (ROUTING §4.2)
    - **(조건부, S9.5-a 수행 시)** 하네스 온보딩 **디스패치 패키지** — 이 패키지로 온보딩 서브를 호출할 것 (S9.5-b). 준비가 실패했으면 사유와 사람이 할 일을 여기 싣는다 (C FALLBACK — 부트스트랩은 이미 성공)
    - **(조건부, 이미 부착된 하네스가 있을 때 — 특히 합류 모드)** **부착된 하네스 좌표 전달**: `{메타 레포}/ORCHESTRATOR.md`에 「부착된 하네스」 섹션이 있으면, 그 표의 **하네스명·대시보드 URL·비고(합류자가 할 일)** 를 한 줄씩 보고에 싣는다.
      - **읽어서 전달할 뿐이다** — 사용자에게 묻지 않고, 새 값을 만들지 않고, 인스턴스를 고치지 않는다. 값은 clone으로 이미 로컬에 와 있다 (`specs/HARNESS-CATALOG.md` §4).
@@ -1119,10 +1177,14 @@ fi
 | `{메타 레포}/invariants.team.yaml` (**시스템 스코프**, *조건부* — S8.8) | `{공유리포}/templates/invariants.template.yaml` |
 | `{공유리포}/.claude/orchestrator-selfcheck.txt` (**머신 로컬·개인**) | `{공유리포}/templates/SELF-CHECK.template.md` |
 | `{공유리포}/.claude/enforce.py` (**머신 로컬·개인** — S8.8) | `{공유리포}/templates/enforce.template.py` |
+| `{메타 레포}/subagents/CATALOG.md` (**시스템 스코프** — S8.9) | `{공유리포}/templates/subagents/CATALOG.template.md` |
+| `{메타 레포}/subagents/<role>.md` (**시스템 스코프** — S8.9. 기본 3종. 인스턴스가 더한 역할은 템플릿 없이 자유 작성) | `{공유리포}/templates/subagents/<role>.template.md` |
 
 템플릿 본문 변경은 *깃 PR/머지*로만 (원칙 8). SETTER는 *항상 현재 main의 템플릿*을 읽어 인스턴스를 채운다 (POLICY-TEMPLATE-ADHERENCE).
 
 위쪽 공유 인스턴스(ORCHESTRATOR·REPO-MAP·조건부 ISSUE-TRACKER·조건부 invariants.team.yaml)는 **인터뷰로 채우는 공유 산출물**이고, `orchestrator-selfcheck.txt`·`enforce.py`는 **인터뷰 없이 생성되는 머신 로컬 개인 산출물**이다 (계약 버전·본문·엔진 로직이 템플릿에 이미 고정돼 있어 물을 것이 없다 — `enforce.py`는 템플릿의 사본이다). `invariants.personal.yaml`은 스키마 주석만 담은 빈 스타터를 S8.8 (2)가 시드하므로 별도 템플릿 파일이 없다.
+
+서브에이전트 카탈로그·역할 정의(S8.9)는 셋째 부류다 — **공유·추적이면서 인터뷰가 없다.** 변수 없는 *그대로 복사*이기 때문이다(선례: `enforce.py`). 시스템별 조정은 렌더 시점이 아니라 *렌더된 인스턴스를 고쳐* 반영한다 — 역할을 더하고 빼는 것이 바로 그 조정이며, S8.9가 계약 버전이 같으면 덮어쓰지 않으므로 재실행이 그 조정을 지우지 않는다.
 
 > **템플릿 파일이 없는 생성물 두 개** — `{메타 레포}/.env.example`(S8.5)·`{공유리포}/.claude/dlc-meta-location.txt`(S6.5)는 문서 인스턴스가 아니라 **형식이 고정된 키=값 파일**이고, 본 룰북의 해당 절 펜스 블록이 그 형식의 단일 원천이다. 자유 작성의 여지가 없으므로 POLICY-TEMPLATE-ADHERENCE의 취지에 어긋나지 않는다.
 

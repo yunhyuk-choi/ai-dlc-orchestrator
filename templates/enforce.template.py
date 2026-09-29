@@ -14,6 +14,15 @@ INVARIANTS-CONTRACT: v2
    keyed-state-dir 를 재사용하며, 세션 마커(reposcan-*)는 키드 work-item 레코드와 별개 네임스페이스다.
    미지원 체크 id 는 엔진이 조용히 no-op 스킵하므로 신·구 엔진↔yaml 혼용도 안전(degraded-safe).
    specs/INVARIANT-ENFORCEMENT.md §14.)
+  (v2 유지 — overlay-consulted-before-work(§15) 체크 2종(관찰·게이트) 추가. 역시 순수 가산이다:
+   기존 체크·emit() 훅 JSON·레코드 스키마 불변, 새 선결 조건 없이 기존 keyed-state-dir 재사용,
+   읽기 관찰 마커(overlayread-*)는 키드 레코드·reposcan-* 과 또 다른 별개 네임스페이스이며,
+   선언(options.overlay) 미설정이면 조용히 SKIP 이라 이 개념이 없는 배포에선 완전 no-op.
+   미지원 체크 id 는 구 엔진이 무시하므로 신·구 혼용도 안전. specs/INVARIANT-ENFORCEMENT.md §15.)
+  (v2 유지 — repo-fresh 재무장(§14.8): 작업 아이템 개시 재무장 epoch + 마커 TTL + 선언
+   options{ttl_minutes·rearm_grace_minutes·repos[]}. 역시 순수 가산이다: 체크 id 집합·훅 JSON·
+   레코드 스키마 불변, options 부재면 기본값으로 동작(구 yaml↔신 엔진 안전), 구 엔진은 options 를
+   모르는 키로 무시(신 yaml↔구 엔진 안전 — 이전 동작 그대로).)
 
 설계 원칙
   - 중립(agnostic): 특정 트래커·프로젝트·회사·스택을 무참조. 읽는 것은 *로컬 파일 계층뿐*
@@ -59,10 +68,15 @@ YAML 파싱 결정 (요구됨)
 호출 규약
   # CHECK 경로 (훅이 stdin으로 훅 JSON을 흘린다 — 읽기 전용)
   enforce.py --event {PreToolUse|PostToolUse|Stop} --base-dir <abs> [--state-dir <abs>] [--work-key <k>]
+             [--overlay-user <id>]        ← §15 사용자 오버레이 식별자(미지정이면 그 체크만 SKIP)
 
   # write-helper 서브커맨드 (오케스트레이터/디스패처 계층이 호출 — 유일한 쓰기 진입점)
   enforce.py record     --work-key <k> [--status <s>] [--cycle-id <c>] [--delegation-id <d>]
-                        [--verified true|false] [--state-dir <abs>|--base-dir <abs>]
+                        [--verified true|false] [--session-id <sid>] [--state-dir <abs>|--base-dir <abs>]
+                        ↳ 작업 아이템 개시 = §14 최신성 재무장 지점이다. record 는 레코드를 쓰기 전에
+                          reposcan 재무장 epoch 를 찍어, 이 작업 아이템의 첫 레포 접근에서 최신성이
+                          *다시* 판정되게 만든다(--session-id/AIDLC_SESSION_ID 있으면 그 세션만,
+                          없으면 글로벌 폴백). 쓰기이므로 write-helper 쪽에 있다 (§13.4 Q4=B).
   enforce.py transition --work-key <k> --status <s> [--verified true|false] [--state-dir|--base-dir]
   enforce.py close      --work-key <k> [--state-dir|--base-dir]
   enforce.py set-active --session-id <sid> --work-key <k> [--state-dir|--base-dir]
@@ -82,6 +96,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 
 # 계약 버전 — 템플릿 헤더의 INVARIANTS-CONTRACT 와 짝을 이룬다.
 INVARIANTS_CONTRACT = "v2"
@@ -608,14 +623,40 @@ def check_keyed_log_on_done(ctx):
     return (False, "")
 
 
-# --- (repo-fresh-before-access) git 최신성 체크 (§14) — "이 레포를 이번 세션에 pull 없이
-#     읽/작업하려는가"를 *네트워크 없이* 판정한다. 원격 있는 레포에만 적용(원격 없음 → SKIP,
-#     agnostic·중립). fresh = .git/FETCH_HEAD mtime >= 세션 앵커 mtime. per-repo·per-session
-#     마커(reposcan-*)로 세션당 레포당 1회만 발동(매 접근마다가 아님) — stat 기반이라 값싸다.
+# --- (repo-fresh-before-access) git 최신성 체크 (§14) — "이 레포를 *지금 이 작업 아이템*에서
+#     pull 없이 읽/작업하려는가"를 *네트워크 없이* 판정한다. 원격 있는 레포에만 적용(원격 없음 →
+#     SKIP, agnostic·중립). stat 기반이라 값싸다.
 #     이 체크는 키드 work-item 레코드(§13.4 write-helper 단일 원천)를 건드리지 않고, 자기 전용
 #     ephemeral 세션 마커만 쓴다 — 그 마커는 언제 휘발해도 안전(state_dir 은 gitignore·재생성 가능).
+#
+#     ⚠️ 재무장(§14.8) — 도입판은 재무장 지점이 *세션 시작 하나뿐*이었다. 그래서 오래 사는 세션
+#        (실측: 7일)에서 세션 초 fetch 한 번이 그 세션 내내 영원히 fresh 판정을 만들고, per-repo
+#        마커가 재발동까지 막아 **공유 레포가 21커밋 앞서 나가도 훅이 한 번도 뜨지 않았다**. 오래
+#        사는 세션 × 다른 주체가 계속 쓰는 레포 = 가장 위험한 조합이 정확히 사각지대였다.
+#        고침은 재무장 지점을 둘 더 만드는 것이다:
+#          (1) **작업 아이템 개시** — write-helper 의 `record`(디스패치마다 찍는 그 지점, §13.4)가
+#              reposcan 재무장 epoch 를 찍는다. pull-before-work 규율이 작업 단위로 자동 강제된다.
+#          (2) **마커 TTL** — 한 작업 아이템이 길어져도 ttl 이 지나면 재판정이 걸린다.
+#        판정식: fresh = FETCH_HEAD mtime >= deadline,
+#                deadline = max(세션 앵커, 재무장 epoch - grace, now - ttl)
+#        dedup:  fired 마커는 (재무장 epoch 이후에 찍혔고) AND (찍힌 지 ttl 이내)일 때만 억제한다.
+#        `- grace` 는 "pull → record → 접근" 순서를 오탐하지 않기 위한 여유다(작업 아이템 기록
+#        직전에 한 pull 도 그 작업 아이템의 pull 로 친다).
 _FRESH_PATH_KEYS = ("file_path", "path", "notebook_path", "filePath")
 _GIT_REFRESH_RE = re.compile(r"\bgit\b[^\n;&|]*\b(?:pull|fetch|clone|remote\s+update)\b", re.I)
+
+# 기본값 근거 (§14.8) — 둘 다 선언(yaml) options 로 덮어쓸 수 있다. 엔진엔 어떤 레포 이름도 없다.
+#   ttl 90분  : 1차 재무장은 *작업 아이템 개시*이고 TTL 은 그 백스톱이다. 통상 작업 아이템은 1시간
+#               안쪽이라 90분이면 작업 중간에 다시 찌르지 않는다(소음 하한). 동시에 어떤 세션도
+#               최대 90분마다 레포당 1회는 재판정을 받으므로, 며칠 사는 세션의 "영원히 fresh"
+#               사각지대가 사라진다(상한). warn tier·레포당 1회라 오탐 비용은 한 줄 넛지뿐이다.
+#   grace 5분 : 오케스트레이터의 자연스러운 순서는 pull → record → 접근이다. record 직전 수 분
+#               안에 한 pull 을 stale 로 몰면 순전한 오탐이 된다. 5분은 그 창을 덮되, 실제로
+#               낡은 pull(수십 분~며칠 전)은 그대로 걸러낸다.
+#   공유 상태 레포(다른 주체가 계속 쓰는 레포)는 90분도 길다 → options.repos[] 의 glob 오버라이드로
+#   더 짧은 ttl 을 선언한다(예: 10분). 어떤 레포가 그런지는 *배포가* 선언한다 — 엔진은 모른다.
+_FRESH_DEFAULT_TTL_MIN = 90
+_FRESH_DEFAULT_GRACE_MIN = 5
 
 
 def _touch(path):
@@ -734,11 +775,115 @@ def _fresh_anchor_mtime(state_dir, sid_tok):
         return None
 
 
+def _rearm_marker_names(sid_tok):
+    """재무장 epoch 파일명 후보 — 세션 스코프 우선 + 글로벌 폴백(§14.8).
+    write-helper 가 --session-id 를 알면 그 세션만 재무장하고(정밀), 모르면 글로벌을 찍어
+    이 state_dir 의 모든 세션이 재판정하게 한다(안전 방향 — 덜 검사하는 쪽으로 기울지 않는다)."""
+    return ("reposcan-" + sid_tok + ".rearm", "reposcan.rearm")
+
+
+def _fresh_rearm_epoch(state_dir, sid_tok):
+    """마지막 작업 아이템 개시(재무장) 시각. 세션 스코프·글로벌 중 최신. 없으면 0.0 (재무장 이력 없음)."""
+    best = 0.0
+    for name in _rearm_marker_names(sid_tok):
+        try:
+            p = os.path.join(state_dir, name)
+            if os.path.isfile(p):
+                m = os.path.getmtime(p)
+                if m > best:
+                    best = m
+        except Exception:
+            continue
+    return best
+
+
+def _mtime_or_none(path):
+    try:
+        return os.path.getmtime(path) if os.path.exists(path) else None
+    except Exception:
+        return None
+
+
+def _opt_minutes(val, default_min):
+    """선언 값(분)을 초로. 숫자가 아니면 기본값. <=0 은 '비활성'로 그대로 통과(0 반환)."""
+    try:
+        if isinstance(val, bool) or val is None:
+            raise ValueError
+        m = float(val)
+    except Exception:
+        m = float(default_min)
+    if m <= 0:
+        return 0.0
+    return m * 60.0
+
+
+def _fresh_options(inv):
+    """불변식 선언의 options 블록을 읽는다 (§14.8). 전부 선택적 — 없으면 기본값.
+    스키마: options: {ttl_minutes: <n>, rearm_grace_minutes: <n>,
+                      repos: [{match: <glob|[glob…]>, ttl_minutes: <n>}, …]}
+    엔진엔 레포 이름이 없다 — 어떤 레포를 더 짧게 볼지는 *선언*이 정한다(중립)."""
+    opts = inv.get("options") if isinstance(inv, dict) else None
+    if not isinstance(opts, dict):
+        opts = {}
+    ttl = _opt_minutes(opts.get("ttl_minutes"), _FRESH_DEFAULT_TTL_MIN)
+    grace = _opt_minutes(opts.get("rearm_grace_minutes"), _FRESH_DEFAULT_GRACE_MIN)
+    repos = opts.get("repos")
+    return ttl, grace, (repos if isinstance(repos, list) else [])
+
+
+def _repo_match_candidates(root):
+    """glob 매칭 후보 — 절대경로(구분자 '/' 정규화)와 basename 둘 다."""
+    try:
+        p = os.path.abspath(root).replace("\\", "/")
+    except Exception:
+        p = str(root).replace("\\", "/")
+    return (p, p.rstrip("/").rsplit("/", 1)[-1])
+
+
+def _fresh_ttl_for_repo(root, ttl_default, repos):
+    """선언된 per-repo 오버라이드 중 *첫 매치*의 ttl 을 쓴다. 없으면 기본 ttl.
+    (공유 상태 레포처럼 다른 주체가 계속 쓰는 레포를 더 짧게 보기 위한 수단 — §14.8.)"""
+    cands = _repo_match_candidates(root)
+    for entry in repos:
+        if not isinstance(entry, dict):
+            continue
+        globs = entry.get("match")
+        if isinstance(globs, str):
+            globs = [globs]
+        if not isinstance(globs, list):
+            continue
+        for g in globs:
+            if not isinstance(g, str):
+                continue
+            for c in cands:
+                try:
+                    if fnmatch.fnmatch(c, g):
+                        return _opt_minutes(entry.get("ttl_minutes"), ttl_default / 60.0)
+                except Exception:
+                    continue
+    return ttl_default
+
+
+def _fmt_age(seconds):
+    try:
+        mins = int(seconds // 60)
+    except Exception:
+        return "?"
+    if mins < 60:
+        return "%d분" % mins
+    if mins < 60 * 48:
+        return "%d시간" % (mins // 60)
+    return "%d일" % (mins // 1440)
+
+
 def check_repo_fresh_before_access(ctx):
-    """(repo-fresh-before-access §14) 원격 있는 레포를 이번 세션에 git pull 없이 읽/작업하려 하면 위반.
-    fresh = .git/FETCH_HEAD mtime >= 세션 앵커 mtime(≈세션 시작). 원격 없음·비레포·앵커 불가·
-    한 번도 fetch 안 됨(FETCH_HEAD 부재=stale) 등은 아래대로 처리. per-repo·per-session 마커로
-    세션당 레포당 1회만 발동한다(매 접근마다가 아님). 훅은 pull 을 대신 실행하지 않고 최신성만 검사한다."""
+    """(repo-fresh-before-access §14) 원격 있는 레포를 *지금 이 작업 아이템*에서 git pull 없이
+    읽/작업하려 하면 위반.
+      fresh  = .git/FETCH_HEAD mtime >= deadline
+      dedup  = fired 마커가 (재무장 epoch 이후) AND (찍힌 지 ttl 이내)일 때만 억제
+      deadline = max(세션 앵커, 재무장 epoch - grace, now - ttl)      ← §14.8 재무장 3지점
+    원격 없음·비레포·앵커 불가·한 번도 fetch 안 됨(FETCH_HEAD 부재=stale) 등은 아래대로 처리.
+    훅은 pull 을 대신 실행하지 않고 최신성만 검사한다. 무엇이 어긋나도 크래시 없이 no-op."""
     state_dir = ctx.get("state_dir")
     if not state_dir:
         return (False, "")  # dedup 불가 → no-op (requires: keyed-state-dir 로도 걸러짐, degraded-safe)
@@ -757,28 +902,485 @@ def check_repo_fresh_before_access(ctx):
     gd = _git_dir(root)
     if not _has_remote(gd):
         return (False, "")  # 원격 없음 → SKIP (중립/agnostic)
+    ttl_default, grace, repo_opts = _fresh_options(ctx.get("inv") or {})
+    ttl = _fresh_ttl_for_repo(root, ttl_default, repo_opts)
+    now = time.time()
+    epoch = _fresh_rearm_epoch(state_dir, sid_tok)
     fired = os.path.join(state_dir, "reposcan-" + sid_tok + "-" + _repo_marker_token(root))
-    if os.path.exists(fired):
-        return (False, "")  # 이번 세션에 이미 발동 — 세션당 레포당 1회
+    fired_at = _mtime_or_none(fired)
+    # 동률(mtime 이 같은 눈금)은 *재판정* 쪽으로 기운다 — 덜 검사하는 쪽으로 기울지 않는다.
+    if fired_at is not None and fired_at > epoch and (ttl <= 0 or (now - fired_at) < ttl):
+        # 이 재무장 창 안에서 이 레포는 이미 판정했다 — 조용히 통과(레포당 1회, 매 접근마다가 아님).
+        return (False, "")
     if anchor is None:
         return (False, "")  # 앵커 확보 실패 → 판정 보류(오탐 방지)
+    deadline = anchor
+    if epoch > 0:
+        deadline = max(deadline, epoch - grace)   # 작업 아이템 개시 이후의 pull 을 요구
+    if ttl > 0:
+        deadline = max(deadline, now - ttl)       # 길어지는 작업 아이템의 백스톱
     fresh = False
+    fh_at = None
     try:
         fh = os.path.join(gd, "FETCH_HEAD")  # 한 번도 fetch 안 됐으면 부재 → stale(=pull 필요, 취지대로)
-        if os.path.isfile(fh) and os.path.getmtime(fh) >= anchor:
+        fh_at = _mtime_or_none(fh)
+        if fh_at is not None and fh_at >= deadline:
             fresh = True
     except Exception:
         fresh = False
     try:
-        _touch(fired)  # 세션당 레포당 1회 보장(판정 후 마커 — fresh든 stale이든 이번 세션엔 재발동 안 함)
+        _touch(fired)  # 재무장 창당 레포당 1회 보장(판정 후 마커 — fresh든 stale이든 이 창에선 재발동 X)
     except Exception:
         pass
     if fresh:
         return (False, "")
     name = os.path.basename(root.rstrip("/\\")) or root
-    return (True, "레포 '%s'를 이번 세션에 git pull(최신화) 없이 접근하려 합니다 — 참조·작업 전에 "
+    why = ("한 번도 fetch 되지 않았습니다" if fh_at is None
+           else "마지막 fetch 로부터 %s 지났습니다" % _fmt_age(max(0.0, now - fh_at)))
+    return (True, "레포 '%s'를 최신화 없이 접근하려 합니다 (%s) — 참조·작업 전에 "
                   "`git fetch && git pull`로 먼저 최신화하세요 (feedback-pull-before-work / "
-                  "specs/INVARIANT-ENFORCEMENT.md §14). 훅은 pull 을 대신 실행하지 않고 최신성만 검사합니다." % name)
+                  "specs/INVARIANT-ENFORCEMENT.md §14). 훅은 pull 을 대신 실행하지 않고 최신성만 검사합니다."
+                  % (name, why))
+
+
+# --- (overlay-consulted-before-work) 사용자 오버레이 참조 체크 (§15) — "작업 아이템을 개시할 때
+#     사용자별 오버레이(작동 스타일·누적 교정 피드백)를 *읽었는가*"를 판정한다.
+#     §14(최신성)와 목적이 다르다: §14 는 "그 레포가 stale 한가"(pull 했나), §15 는 "참조했는가"(읽었나).
+#     **그래서 pull 만 하고 안 읽으면 통과시키지 않는다** — 판정 원천이 FETCH_HEAD 가 아니라 *실제
+#     읽기 관찰 마커*다. 공유 장기 메모리를 "어떤 환경에서 에이전트가 뜨든 같은 사용자 최적화를 받는다"는
+#     목적으로 두는데, 그걸 *읽게 만드는 장치*가 없으면 그 목적이 조용히 깨진다(실측: 오버레이가 갱신을
+#     멈춘 채 학습이 전부 머신 로컬 메모리로 샜다).
+#
+#     중립(agnostic): 엔진엔 어떤 디렉토리명·파일명·사용자 이름도 박혀 있지 않다. 오버레이 위치·필수
+#     항목·사용자 식별자는 전부 *선언*(options.overlay) 또는 CLI(--overlay-user)/env 로 들어오고,
+#     **미설정이면 조용히 SKIP** 한다(이 개념이 없는 배포에서 완전 no-op).
+#
+#     두 바인딩이 짝을 이룬다(§15.3):
+#       (관찰) PostToolUse — 오버레이 파일을 실제로 읽은 도구 호출을 보고 ephemeral 마커를 찍는다.
+#              *절대 위반을 내지 않는다*(순수 관찰). 사후 이벤트라 "읽기가 실제로 일어났다"가 참이다.
+#       (게이트) PreToolUse(디스패치 도구) — 이번 재무장 창 안에 그 마커가 없으면 warn.
+#     판정식: consulted = 마커 mtime >= deadline,
+#             deadline = max(세션 앵커, 재무장 epoch - grace)          ← §14.8 재무장 창을 그대로 재사용
+#     재무장 epoch 는 write-helper 의 `record`(디스패치마다 찍는 그 지점)가 갱신하므로, 창 = *작업 아이템*
+#     이다. 즉 "작업 아이템마다 한 번은 오버레이를 읽어라"가 자동으로 강제된다.
+#     grace 는 "읽기 → record → 디스패치" 순서에서 읽기가 record 직전이었던 경우를 오탐하지 않기 위한
+#     여유다. 오탐 비용은 작다 — 경고를 받고 하는 일이 *작은 진입점 두 파일을 다시 읽는 것*이고, 그건
+#     애초에 요구되는 행동 자체다. 한 번 읽으면 마커가 갱신돼 같은 창에선 다시 뜨지 않는다(창당 1회).
+_OVERLAY_DEFAULT_GRACE_MIN = 5
+_OVERLAY_TOKEN_RE = re.compile(r"[\s'\"`=;|,()<>&]+")
+
+
+def _overlay_user(ctx, ov):
+    """사용자 식별자 해석: CLI(--overlay-user) > env(AIDLC_OVERLAY_USER) > 선언(options.overlay.user).
+    경로 세그먼트가 되므로 안전화한다(구분자·상위참조 주입 방지). 없으면 None → 호출부가 SKIP."""
+    for cand in (ctx.get("overlay_user"),
+                 os.environ.get("AIDLC_OVERLAY_USER"),
+                 ov.get("user") if isinstance(ov, dict) else None):
+        if isinstance(cand, str) and cand.strip():
+            s = re.sub(r"[^A-Za-z0-9._@+-]", "_", cand.strip()).lstrip(".")
+            if s:
+                return s[:100]
+    return None
+
+
+def _overlay_decl(ctx):
+    """선언 options.overlay 를 해석해 {targets: [(abs, tail)…], grace: 초} 반환. 부재·불완전·
+    대상 파일 전무 → None (조용히 SKIP — 이 개념이 없는 배포에서 no-op).
+
+    스키마: options:
+              overlay:
+                path: <메타 레포 상대 또는 절대 경로. '{user}' 치환 가능>
+                required: [<path 기준 상대 파일…>]   # *전부* 읽어야 충족 (항상 읽는 진입점 집합)
+                user: <식별자>                        # 선택 — CLI/env 가 우선
+                grace_minutes: <n>                    # 선택 — 기본 5
+    required 중 *실제로 존재하는* 파일만 대상이 된다 — 아직 없는 항목(예: 아직 만들지 않은 인덱스)이
+    영구 미충족을 만들지 않게 한다(degraded-safe·환경 중립)."""
+    inv = ctx.get("inv")
+    opts = inv.get("options") if isinstance(inv, dict) else None
+    ov = opts.get("overlay") if isinstance(opts, dict) else None
+    if not isinstance(ov, dict):
+        return None
+    path = ov.get("path")
+    if not isinstance(path, str) or not path.strip():
+        return None
+    path = path.strip()
+    if "{user}" in path:
+        user = _overlay_user(ctx, ov)
+        if not user:
+            return None  # 사용자 미식별 → SKIP (추측하지 않는다)
+        path = path.replace("{user}", user)
+    req = ov.get("required")
+    if isinstance(req, str):
+        req = [req]
+    if not isinstance(req, list) or not req:
+        return None  # 무엇을 읽어야 충족인지 선언되지 않음 → SKIP (엔진이 파일명을 가정하지 않는다)
+    root = path.replace("\\", "/")
+    try:
+        if not os.path.isabs(root):
+            base = ctx.get("base_dir") or ctx.get("log_dir")
+            if not base:
+                return None
+            root = os.path.join(base, *[s for s in root.split("/") if s not in ("", ".")])
+        root = os.path.abspath(root)
+    except Exception:
+        return None
+    leaf = os.path.basename(root.rstrip("/\\"))
+    targets = []
+    for r in req:
+        if not isinstance(r, str) or not r.strip():
+            continue
+        rel = r.strip().replace("\\", "/").strip("/")
+        if not rel or ".." in rel.split("/"):
+            continue
+        try:
+            p = os.path.abspath(os.path.join(root, *rel.split("/")))
+            if not os.path.isfile(p):
+                continue  # 아직 없는 항목은 요구하지 않는다
+        except Exception:
+            continue
+        # tail = 문자열 매칭용 꼬리(오버레이 디렉토리 leaf + 상대경로) — 절대/상대/POSIX-스타일 경로
+        #   표기 차이를 가로질러 "이 파일을 가리키는 문자열인가"를 값싸게 본다.
+        targets.append((p, ((leaf + "/") if leaf else "") + rel))
+    if not targets:
+        return None
+    return {"targets": targets,
+            "grace": _opt_minutes(ov.get("grace_minutes"), _OVERLAY_DEFAULT_GRACE_MIN)}
+
+
+def _overlay_marker(state_dir, sid_tok, tail):
+    """읽기 관찰 마커 — 자기 전용 ephemeral 네임스페이스(overlayread-*). 키드 work-item 레코드·
+    active 포인터와 별개이며 언제 휘발해도 안전(재판정이 한 번 더 걸릴 뿐)."""
+    h = hashlib.sha1(tail.lower().encode("utf-8", "replace")).hexdigest()[:16]
+    return os.path.join(state_dir, "overlayread-" + sid_tok + "-" + h)
+
+
+def _overlay_strings(tool_input):
+    """tool_input 에서 경로가 실릴 수 있는 문자열 값을 모은다(중첩 1단계 리스트까지)."""
+    vals = []
+    if isinstance(tool_input, dict):
+        for v in tool_input.values():
+            if isinstance(v, str) and v.strip():
+                vals.append(v)
+            elif isinstance(v, list):
+                for x in v:
+                    if isinstance(x, str) and x.strip():
+                        vals.append(x)
+    return vals
+
+
+def _overlay_hit(target_abs, tail, vals, cwd):
+    """이 도구 호출의 문자열들이 이 오버레이 파일을 가리키는가.
+      (1) 꼬리 부분문자열 — 절대/상대/POSIX-스타일(`/c/...`)·구분자 차이를 가로질러 잡는다.
+      (2) 토큰 절대화 동치 — 셸 명령 안의 상대 경로 토큰을 cwd 기준으로 절대화해 비교.
+    둘 다 순수 문자열·경로 연산이다(대상 파일을 다시 열지 않는다)."""
+    tl = tail.lower()
+    for s in vals:
+        if tl and tl in s.replace("\\", "/").lower():
+            return True
+    try:
+        ta = os.path.normcase(target_abs)
+        base_l = os.path.basename(target_abs).lower()
+    except Exception:
+        return False
+    for s in vals:
+        for tok in _OVERLAY_TOKEN_RE.split(s):
+            if not tok:
+                continue
+            tok = tok.strip().strip("'\"")
+            if not tok or os.path.basename(tok.replace("\\", "/")).lower() != base_l:
+                continue
+            try:
+                p = tok if os.path.isabs(tok) else (os.path.join(cwd, tok) if cwd else tok)
+                if os.path.normcase(os.path.abspath(p)) == ta:
+                    return True
+            except Exception:
+                continue
+    return False
+
+
+def check_overlay_read_observe(ctx):
+    """(관찰 전용 — *절대 위반을 내지 않는다*) 오버레이 파일을 읽은 도구 호출을 보고 마커를 찍는다.
+    PostToolUse 에 바인딩한다 — 사후라 "읽기가 실제로 일어났다"가 참이다(거부·실패한 읽기가 충족으로
+    세지 않는다)."""
+    decl = _overlay_decl(ctx)
+    state_dir = ctx.get("state_dir")
+    if not decl or not state_dir:
+        return (False, "")
+    sid_tok = _fresh_session_token(ctx)
+    # 앵커를 마커보다 *먼저* 확보한다 — 세션 첫 도구가 오버레이 읽기일 때 앵커(나중 생성)가 마커보다
+    # 새로워져 게이트가 오탐하는 것을 막는다.
+    _fresh_anchor_mtime(state_dir, sid_tok)
+    vals = _overlay_strings(ctx.get("tool_input"))
+    if not vals:
+        return (False, "")
+    cwd = ctx.get("cwd")
+    for abs_p, tail in decl["targets"]:
+        if _overlay_hit(abs_p, tail, vals, cwd):
+            try:
+                _touch(_overlay_marker(state_dir, sid_tok, tail))
+            except Exception:
+                pass
+    return (False, "")
+
+
+def check_overlay_consulted_before_work(ctx):
+    """(게이트) 작업 아이템 개시(디스패치) 시점에 이번 재무장 창 안의 오버레이 읽기 마커가 없으면 위반.
+    선언 부재·state_dir 부재·대상 파일 전무·앵커 확보 실패 → 조용히 no-op(degraded-safe)."""
+    decl = _overlay_decl(ctx)
+    state_dir = ctx.get("state_dir")
+    if not decl or not state_dir:
+        return (False, "")
+    sid_tok = _fresh_session_token(ctx)
+    anchor = _fresh_anchor_mtime(state_dir, sid_tok)
+    if anchor is None:
+        return (False, "")  # 앵커 확보 실패 → 판정 보류(오탐 방지)
+    deadline = anchor
+    epoch = _fresh_rearm_epoch(state_dir, sid_tok)
+    if epoch > 0:
+        deadline = max(deadline, epoch - decl["grace"])
+    missing = []
+    for abs_p, tail in decl["targets"]:
+        at = _mtime_or_none(_overlay_marker(state_dir, sid_tok, tail))
+        if at is None or at < deadline:
+            missing.append(abs_p)
+    if not missing:
+        return (False, "")
+    return (True, "작업 아이템을 개시(위임)하려 하는데 이번 작업에서 사용자 오버레이를 참조하지 "
+                  "않았습니다 — 미참조: %s. 위임 전에 이 진입점부터 읽으세요(개별 상세 파일은 "
+                  "인덱스를 보고 필요한 것만). 훅은 대신 읽어 주지 않고 참조 여부만 검사합니다 "
+                  "(specs/INVARIANT-ENFORCEMENT.md §15)." % ", ".join(missing))
+
+
+# ---------------------------------------------------------------------------
+# 서브에이전트 역할 계약 (role-tools-match-on-dispatch — v2 가산 · §16)
+#   카탈로그(역할별 도구·티어의 단일 원천)와 탐색 스텁 프론트매터가 *지금 이 위임에서* 일치하는지
+#   위임 직전(PreToolUse)에 대조한다. CHECK 경로는 읽기 전용 — 프론트매터를 고쳐 주지 않는다.
+#   엔진엔 역할 이름·도구 이름·티어 값이 하나도 박혀 있지 않다(전부 선언·카탈로그에서 온다).
+# ---------------------------------------------------------------------------
+_ROLE_DEFAULT_CATALOG = "subagents/CATALOG.md"
+_ROLE_DEFAULT_STUB = os.path.join(".claude", "agents", "dlc-role.md").replace("\\", "/")
+# 위임 지시에서 역할 이름을 꺼내는 기본 표기. options.subagent_role.role_pattern 으로 교체 가능.
+_ROLE_DEFAULT_PATTERN = (r"(?:^|[\s(\[|,])(?:role|\uc5ed\ud560)\s*[:=]\s*"
+                         r"[`\"']?([A-Za-z0-9][A-Za-z0-9._-]{0,63})")
+_ROLE_ANY_TOOLS = "*"       # 카탈로그의 "전체 도구" 표기 → 스텁은 tools: 줄 자체를 생략해야 한다
+
+
+def _role_opts(ctx):
+    """선언 options.subagent_role 를 반환. 부재면 None → 조용히 SKIP(이 개념이 없는 배포에서 no-op)."""
+    inv = ctx.get("inv")
+    opts = inv.get("options") if isinstance(inv, dict) else None
+    sr = opts.get("subagent_role") if isinstance(opts, dict) else None
+    return sr if isinstance(sr, dict) else None
+
+
+def _role_resolve(path, bases):
+    """상대 경로를 후보 base 들에 대해 해석해 *처음 존재하는* 파일을 돌려준다. 없으면 None."""
+    if not isinstance(path, str) or not path.strip():
+        return None
+    q = path.strip().replace("\\", "/")
+    try:
+        if os.path.isabs(q):
+            return os.path.abspath(q) if os.path.isfile(q) else None
+        parts = [x for x in q.split("/") if x not in ("", ".")]
+        if ".." in parts:
+            return None
+        for b in bases:
+            if not b:
+                continue
+            cand = os.path.abspath(os.path.join(b, *parts))
+            if os.path.isfile(cand):
+                return cand
+    except Exception:
+        return None
+    return None
+
+
+def _role_tool_set(spec):
+    """도구 표기 문자열 → 정규화 집합. "*" 는 None(=전체)로, 빈 값은 빈 집합으로."""
+    if spec is None:
+        return set()
+    txt = str(spec).strip().strip("`").strip()
+    if not txt:
+        return set()
+    if txt == _ROLE_ANY_TOOLS:
+        return None                     # None = 제한 없음(전체)
+    out = set()
+    for tok in re.split(r"[,\s]+", txt):
+        t = tok.strip().strip("`").strip()
+        if t:
+            out.add(t)
+    return out
+
+
+def _role_parse_catalog(path):
+    """카탈로그 마크다운 표를 파싱 → {역할: {"file":…, "tools":…, "tier":…}}.
+    컬럼 순서 계약: 역할 | 정의 파일 | 도구 | 티어 | 설명 (§16 — 순서 변경은 계약 버전 변경).
+    정의 파일 셀이 .md 로 끝나는 행만 취한다 → 헤더·구분줄·설명 표가 자연히 걸러진다.
+    파싱 실패·행 0개 → 빈 dict (호출부가 조용히 SKIP)."""
+    text = _read_text(path)
+    if not text:
+        return {}
+    rows = {}
+    for line in text.split("\n"):
+        ln = line.strip()
+        if not ln.startswith("|"):
+            continue
+        cells = [c.strip() for c in ln.strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        name = cells[0].strip().strip("`").strip()
+        fcell = cells[1].strip().strip("`").strip()
+        if not name or not fcell.lower().endswith(".md"):
+            continue
+        if ".." in fcell.replace("\\", "/").split("/"):
+            continue
+        rows[name] = {"file": fcell,
+                      "tools": cells[2].strip().strip("`").strip(),
+                      "tier": cells[3].strip().strip("`").strip()}
+    return rows
+
+
+def _role_frontmatter(path):
+    """스텁 프론트매터 파싱 → dict. 첫 바이트가 '---' 가 아니거나 닫는 '---' 가 없으면 None."""
+    text = _read_text(path)
+    if not text:
+        return None
+    text = text.lstrip("\ufeff")
+    if not text.startswith("---"):
+        return None
+    m = re.match(r"---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|$)", text, re.S)
+    if not m:
+        return None
+    fm = {}
+    for line in m.group(1).split("\n"):
+        ln = line.strip()
+        if not ln or ln.startswith("#"):
+            continue
+        km = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$", ln)
+        if not km:
+            continue
+        fm[km.group(1)] = km.group(2).strip()
+    return fm
+
+
+def _role_requested(ctx, sr):
+    """위임 지시에서 역할 이름을 꺼낸다. tool_input 의 문자열 값 전체를 훑어 약속된 표기를 찾는다.
+    못 찾으면 None → 호출부가 정책에 따라 처리(기본 SKIP)."""
+    pat = sr.get("role_pattern") if isinstance(sr, dict) else None
+    if not isinstance(pat, str) or not pat.strip():
+        pat = _ROLE_DEFAULT_PATTERN
+    try:
+        rx = re.compile(pat, re.M)
+    except Exception:
+        return None
+    for v in _overlay_strings(ctx.get("tool_input")):   # 문자열 값 수집기를 재사용(중첩 1단계까지)
+        try:
+            mm = rx.search(v)
+        except Exception:
+            continue
+        if mm and mm.groups():
+            g = mm.group(1)
+            if isinstance(g, str) and g.strip():
+                return g.strip()
+    return None
+
+
+def _role_targets_stub(ctx, sr):
+    """이번 위임이 *탐색 스텁* 을 겨냥하는지. options.subagent_role.stub_agent 미선언이면 None
+    (판단 불가 → 호출부가 SKIP 쪽으로 기운다)."""
+    name = sr.get("stub_agent")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    name = name.strip()
+    for v in _overlay_strings(ctx.get("tool_input")):
+        if v.strip() == name:
+            return True
+        if name in [t for t in re.split(r"[^A-Za-z0-9._-]+", v) if t]:
+            return True
+    return False
+
+
+def check_role_tools_match_on_dispatch(ctx):
+    """(게이트) 위임 직전 — 카탈로그의 그 역할 행과 탐색 스텁 프론트매터가 어긋나면 위반.
+
+    조용히 SKIP 하는 경우(전부 degraded-safe · exit 0 무출력):
+      - options.subagent_role 미선언 (이 개념을 쓰지 않는 배포)
+      - 카탈로그 파일 없음 / 파싱 결과 행 0개
+      - 스텁 파일 없음 / 프론트매터 파싱 실패
+      - 지시에서 역할 이름을 못 찾았고, 이번 위임이 스텁을 겨냥한다고 단정할 수 없음
+    """
+    sr = _role_opts(ctx)
+    if not sr:
+        return (False, "")
+    cwd = ctx.get("cwd") or os.getcwd()
+    cat_path = _role_resolve(sr.get("catalog") or _ROLE_DEFAULT_CATALOG,
+                             [ctx.get("base_dir"), ctx.get("log_dir"), cwd])
+    if not cat_path:
+        return (False, "")
+    rows = _role_parse_catalog(cat_path)
+    if not rows:
+        return (False, "")
+    stub_path = _role_resolve(sr.get("stub") or _ROLE_DEFAULT_STUB,
+                              [cwd, ctx.get("base_dir"), ctx.get("log_dir")])
+    if not stub_path:
+        return (False, "")
+    fm = _role_frontmatter(stub_path)
+    if fm is None:
+        return (False, "")
+
+    role = _role_requested(ctx, sr)
+    if not role:
+        # 역할 이름이 지시에 없다. 이번 위임이 *스텁을 겨냥한다고 확인될 때만* 위반으로 본다 —
+        # 다른 서브 타입을 부르는 배포에서 매 위임마다 뜨지 않게 하기 위함이다(오탐 억제).
+        if _role_targets_stub(ctx, sr) is True:
+            return (True, "탐색 스텁(%s)에 위임하면서 지시에 역할 이름이 없습니다 — 지시에 "
+                          "`role: <역할 이름>` 을 명시하세요. 스텁은 역할을 추측하지 않고 멈춥니다 "
+                          "(specs/INVARIANT-ENFORCEMENT.md 16)." % (fm.get("name") or stub_path))
+        return (False, "")
+
+    row = rows.get(role)
+    if row is None:
+        return (True, "역할 %r 이 카탈로그(%s)에 없습니다 — 위임 전에 역할 정의 md 를 만들고 "
+                      "카탈로그에 한 줄을 더하세요(ROUTING.md 4.3 (b)). 카탈로그에 없는 역할은 "
+                      "스텁이 해석하지 못하고 멈춥니다." % (role, cat_path))
+
+    problems = []
+    want = _role_tool_set(row.get("tools"))
+    have = _role_tool_set(fm.get("tools")) if "tools" in fm else None
+    if want is None and have is not None:
+        problems.append("도구: 카탈로그는 전체(%s)인데 프론트매터가 %s 로 좁혀져 있습니다 "
+                        "— `tools:` 줄을 생략하세요" % (_ROLE_ANY_TOOLS, sorted(have)))
+    elif want is not None and have is None:
+        problems.append("도구: 카탈로그는 %s 인데 프론트매터에 `tools:` 가 없습니다(= 전체 도구) "
+                        "— 이 역할에 필요 없는 도구가 딸려 갑니다" % sorted(want))
+    elif want is not None and have is not None and want != have:
+        bits = []
+        extra = sorted(have - want)
+        missing = sorted(want - have)
+        if extra:
+            bits.append("과다 %s" % extra)
+        if missing:
+            bits.append("부족 %s" % missing)
+        problems.append("도구 불일치(%s): 카탈로그 %s vs 프론트매터 %s"
+                        % (", ".join(bits), sorted(want), sorted(have)))
+
+    # 티어→모델 확인은 *선언이 매핑을 줄 때만* 한다 — 엔진은 모델 이름을 모른다(중립).
+    tier_models = sr.get("tier_models")
+    if isinstance(tier_models, dict) and row.get("tier"):
+        expect = tier_models.get(row["tier"])
+        if isinstance(expect, str) and expect.strip():
+            got = fm.get("model")
+            if got != expect.strip():
+                problems.append("모델: 카탈로그 티어 %r -> %r 인데 프론트매터는 %r"
+                                % (row["tier"], expect.strip(), got))
+
+    if not problems:
+        return (False, "")
+    return (True, "역할 %r 위임 준비가 카탈로그와 어긋납니다 — %s. 위임 *전에* 카탈로그(%s)를 보고 "
+                  "%s 의 프론트매터를 채우세요(ROUTING.md 4.3 (c)). 훅은 대신 고쳐 주지 않고 "
+                  "대조만 합니다 — 어긋난 채 스폰하면 그 역할이 쓰지 말아야 할 도구를 쥡니다 "
+                  "(specs/INVARIANT-ENFORCEMENT.md 16)."
+                  % (role, " / ".join(problems), cat_path, stub_path))
 
 
 CHECKS = {
@@ -791,6 +1393,11 @@ CHECKS = {
     "keyed-log-on-done": check_keyed_log_on_done,
     # git 최신성 (v2 가산 — §14)
     "repo-fresh-before-access": check_repo_fresh_before_access,
+    # 사용자 오버레이 참조 (v2 가산 — §15). 관찰(PostToolUse)과 게이트(PreToolUse)가 짝.
+    "overlay-read-observe": check_overlay_read_observe,
+    "overlay-consulted-before-work": check_overlay_consulted_before_work,
+    # 서브에이전트 역할 계약 (v2 가산 — §16)
+    "role-tools-match-on-dispatch": check_role_tools_match_on_dispatch,
 }
 
 
@@ -841,16 +1448,21 @@ def _match_tool(globs, tool_name, tool_input):
 
 
 def evaluate(event, tool_name, tool_input, invariants, log_dir, state_dir=None, work_key=None,
-             cwd=None, session_id=None):
+             cwd=None, session_id=None, base_dir=None, overlay_user=None):
     """위반된 (tier, message) 목록 반환. 체크에 넘길 컨텍스트(ctx)를 한 번 구성해 전달한다
     (§13.6-6 — 전역 체크와 키드 체크가 같은 ctx 를 받는다). §14 최신성 체크가 tool_input·cwd·
-    session_id 를 쓰므로 ctx 에 함께 싣는다(기존 체크는 여분 키를 무시한다 — 무회귀)."""
+    session_id 를, §15 오버레이 체크가 base_dir·overlay_user 를 쓰므로 ctx 에 함께 싣는다
+    (기존 체크는 여분 키를 무시한다 — 무회귀)."""
     ctx = {"log_dir": log_dir, "state_dir": state_dir, "work_key": work_key,
-           "tool_name": tool_name, "tool_input": tool_input, "cwd": cwd, "session_id": session_id}
+           "tool_name": tool_name, "tool_input": tool_input, "cwd": cwd, "session_id": session_id,
+           "base_dir": base_dir or log_dir, "overlay_user": overlay_user}
     findings = []
     for inv in invariants:
         if not _requires_met(inv, ctx):
             continue
+        # 평가 중인 불변식 선언 자체를 ctx 에 싣는다 — 체크가 자기 options 를 읽을 수 있게(§14.8).
+        # 여분 키라 기존 체크는 무시한다(무회귀). 순차 평가이므로 덮어쓰기 안전.
+        ctx["inv"] = inv
         for b in _bindings(inv):
             if b.get("event") != event:
                 continue
@@ -877,15 +1489,45 @@ def evaluate(event, tool_name, tool_input, invariants, log_dir, state_dir=None, 
 #      디스패치한 오케스트레이터 계층이 호출한다. CHECK 경로(위)와는 진입점만 분리.
 #      반환 exit code: 0=성공, 2=거부(잘못된 인자·무효 전이·검증 없는 done), 1=예기치 못한 오류.
 # ===========================================================================
-def _sub_emit(ok, message, record=None, exit_code=0):
+def _sub_emit(ok, message, record=None, exit_code=0, extra=None):
     out = {"ok": ok, "message": message}
     if record is not None:
         out["record"] = record
+    if isinstance(extra, dict):
+        for k, v in extra.items():      # 가산 필드만 — 기존 키(ok/message/record)는 덮지 않는다.
+            out.setdefault(k, v)
     _emit_write(out)
     return exit_code
 
 
-def _apply_write(state_dir, key, status, fields, require_existing):
+def _rearm_repo_scan(state_dir, session_id=None):
+    """§14.8 재무장 — *작업 아이템 개시*를 git 최신성 재판정 지점으로 만든다.
+
+    왜 여기(write-helper)인가: 이건 *쓰기*다. CHECK 경로(--event)는 읽기 전용이라는 §13.4 Q4=B
+    경계를 지켜, epoch 쓰기는 쓰기 진입점인 record 서브커맨드에 둔다. (CHECK 경로가 계속
+    touch 하는 것은 도입판부터 그래 왔던 자기 전용 ephemeral 마커 — 세션 앵커와 fired 마커 —
+    뿐이며, 키드 work-item 레코드·active 포인터는 여전히 건드리지 않는다.)
+
+    구현은 *epoch 파일 하나를 touch* 하는 것뿐이다 — fired 마커를 지우고 다니지 않는다.
+    체크가 'fired 마커의 mtime >= epoch' 일 때만 억제하므로, epoch 를 앞으로 미는 것만으로
+    이전 창의 마커 전부가 한 번에 무효화된다(원자적·스캔 불필요·다른 워커 파일 무간섭).
+
+    스코프: session_id 를 알면 그 세션만(정밀), 모르면 글로벌 파일(이 state_dir 의 모든 세션이
+    재판정 — 덜 검사하는 쪽으로 기울지 않는 안전 방향 폴백).
+    실패해도 절대 예외를 올리지 않는다 — 재무장은 record 의 부가 효과이지 전제가 아니다."""
+    if not state_dir:
+        return None
+    sid = _sanitize_key(session_id) or _sanitize_key(os.environ.get("AIDLC_SESSION_ID"))
+    name = ("reposcan-" + sid + ".rearm") if sid else "reposcan.rearm"
+    path = os.path.join(state_dir, name)
+    try:
+        _touch(path)
+        return path
+    except Exception:
+        return None
+
+
+def _apply_write(state_dir, key, status, fields, require_existing, extra=None):
     """record/transition 공통 — 스키마 검증 + 유효 전이 강제 + atomic 쓰기.
     require_existing=True 면 기존 레코드가 있어야 한다(transition). fields: cycle_id·
     delegation_id·verified·dispatched_at 중 주어진 것만 반영."""
@@ -925,7 +1567,8 @@ def _apply_write(state_dir, key, status, fields, require_existing):
         _write_state(state_dir, key, rec)
     except Exception as e:
         return _sub_emit(False, "write failed: %s" % e, exit_code=1)
-    return _sub_emit(True, "recorded %r status=%s" % (key, status), record=rec, exit_code=0)
+    return _sub_emit(True, "recorded %r status=%s" % (key, status), record=rec, exit_code=0,
+                     extra=extra)
 
 
 def _cmd_close(state_dir, key):
@@ -1038,9 +1681,13 @@ def _run_subcommand(sub, argv):
     key = _parse_opt(argv, "work-key")
     try:
         if sub == "record":
+            # 작업 아이템 개시 = §14.8 최신성 재무장 지점. 레코드 쓰기 *전에* 찍는다 — 재무장은
+            # 멱등이고, 설령 뒤의 record 가 거부돼도 결과는 '한 번 더 검사'(안전 방향)뿐이다.
+            rearmed = _rearm_repo_scan(state_dir, _parse_opt(argv, "session-id"))
             return _apply_write(state_dir, key,
                                 _parse_opt(argv, "status"),
-                                _collect_fields(argv), require_existing=False)
+                                _collect_fields(argv), require_existing=False,
+                                extra={"rearmed": rearmed})
         if sub == "transition":
             return _apply_write(state_dir, key,
                                 _parse_opt(argv, "status"),
@@ -1267,6 +1914,9 @@ def main(argv=None):
     cwd = data.get("cwd") if isinstance(data, dict) else None
     # 키 해석: --work-key/AIDLC_WORK_KEY > active-포인터 > 없음(키드 체크 no-op).
     work_key = _resolve_work_key(_parse_opt(argv, "work-key"), state_dir, session_id)
+    # §15 오버레이 사용자 식별자 — CLI > env > 선언(options.overlay.user). 미해소면 그 체크만 SKIP.
+    #   배포별(머신·사람별) 값이라 팀 공유 yaml 이 아니라 *훅 명령 인자*가 1차 채널이다(--base-dir 와 같은 사상).
+    overlay_user = _parse_opt(argv, "overlay-user")
     # Stop-block 무한루프 가드용 신호 — 재진입한 Stop 훅이면 하네스가 true 로 실어 준다.
     # 깨지거나 없으면 False(=미재진입)로 안전 처리 (degraded-safe).
     stop_hook_active = bool(data.get("stop_hook_active")) if isinstance(data, dict) else False
@@ -1274,7 +1924,7 @@ def main(argv=None):
     try:
         invs = load_invariants(invariants_dir)
         findings = evaluate(event, tool_name, tool_input, invs, log_dir, state_dir, work_key,
-                            cwd, session_id)
+                            cwd, session_id, base_dir_arg or log_dir, overlay_user)
         out, code = emit(event, findings, stop_hook_active)
     except Exception:
         out, code = None, 0  # 무엇이 어긋나도 조용히 통과 (EX-15 / C FALLBACK)

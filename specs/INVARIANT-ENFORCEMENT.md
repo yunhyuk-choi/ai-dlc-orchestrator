@@ -544,6 +544,7 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 ## 14. git 최신성 강제 — `repo-fresh-before-access` (feedback-pull-before-work 승격)
 
 > **상태: IMPLEMENTED (도입 tier=warn · 계약 v2 유지 · 가산 체크 1종).** 엔진에 체크 `check_repo_fresh_before_access` + git/마커 헬퍼가, 템플릿에 불변식 `repo-fresh-before-access`(PreToolUse·warn)가 추가됐다.
+> **보강: §14.8 재무장(re-arm) — 도입판의 재무장 지점이 "세션 시작" 하나뿐이라 오래 사는 세션에서 구조적으로 무력해지던 것을 고쳤다(작업 아이템 개시 재무장 + 마커 TTL + 선언 options). tier=warn 은 그대로다 — 승격은 별개 사안이며, 재무장이 고쳐져야 warn 이라도 제때 뜬다.**
 
 ### 14.1 문제 — "착수·참조 전 pull"은 MD 규율로는 표류한다
 
@@ -558,8 +559,8 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 
 - **훅은 `git pull`을 대신 실행하지 않는다.** *최신성을 검사*하고, stale이면 경고해 **에이전트가 먼저 pull하게** 만든다. (자동 pull은 예기치 못한 네트워크·머지·인증 부작용을 훅에 넣게 되어 중립·degraded 원칙과 충돌한다.)
 - **원격 있는 레포에만 적용** — 원격이 없으면 SKIP(agnostic·중립). 로컬 전용 레포에 "pull하라"는 무의미하다.
-- **네트워크 없는 값싼 판정** — `.git/FETCH_HEAD`의 mtime을 *세션 앵커*(세션 첫 매치 도구 실행 시점 ≈ 세션 시작) mtime과 비교한다. `FETCH_HEAD mtime >= 앵커` 이면 *이번 세션에 fetch/pull됨* → fresh. **네트워크 호출이 아니라 stat 한 번**이다.
-- **세션당 레포당 1회** — `<state_dir>/reposcan-<session>-<repo-hash>` 마커로 한 번 발동하면 이후 그 레포 접근엔 조용하다(매 Read마다 뜨지 않음 — 토큰·비용 절약).
+- **네트워크 없는 값싼 판정** — `.git/FETCH_HEAD`의 mtime을 *기준선(deadline)* 과 비교한다. `FETCH_HEAD mtime >= deadline` 이면 fresh. **네트워크 호출이 아니라 stat 한 번**이다. (도입판의 기준선은 *세션 앵커* 하나였다 → §14.8이 재무장 epoch·TTL을 더해 `deadline = max(세션 앵커, 재무장 epoch − grace, now − ttl)`로 일반화했다.)
+- **재무장 창당 레포당 1회** — `<state_dir>/reposcan-<session>-<repo-hash>` 마커로 한 번 발동하면 *그 창 안에서는* 그 레포 접근에 조용하다(매 Read마다 뜨지 않음 — 토큰·비용 절약). 창은 작업 아이템 개시 또는 TTL 만료로 다시 열린다(§14.8). *도입판에서는 이 창이 세션 전체였고, 그게 §14.8이 고친 사각지대다.*
 
 ### 14.3 판정 로직 (엔진 `check_repo_fresh_before_access`)
 
@@ -569,11 +570,13 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 | 접근 경로가 git 레포 아님 | SKIP (no-op) |
 | Bash/PowerShell 명령이 `git pull\|fetch\|clone\|remote update` | SKIP (최신화 행위 자체 — 마커도 안 남겨 뒤 접근이 재판정) |
 | 레포에 원격 없음 | SKIP (agnostic) |
-| 이번 세션에 이미 발동(마커 존재) | SKIP (세션당 레포당 1회) |
+| 이 재무장 창에서 이미 발동(마커가 재무장 epoch 이후 + TTL 이내) | SKIP (창당 레포당 1회 — §14.8) |
 | 앵커 확보 실패(쓰기 불가 등) | 판정 보류 no-op (오탐 방지) |
 | `FETCH_HEAD` 부재(한 번도 fetch 안 됨) | **stale → warn** (취지: pull 먼저) |
-| `FETCH_HEAD mtime >= 앵커` | fresh → no-op |
-| 그 외(FETCH_HEAD가 앵커보다 오래됨) | **stale → warn** |
+| `FETCH_HEAD mtime >= deadline` | fresh → no-op |
+| 그 외(FETCH_HEAD가 deadline보다 오래됨) | **stale → warn** (메시지에 "마지막 fetch 로부터 N 지났습니다" 사유 포함) |
+
+`deadline = max(세션 앵커, 재무장 epoch − grace, now − ttl)` — 세 항의 의미와 근거는 §14.8.
 
 - 접근 경로 유도: 파일-경로 도구(Read/Edit/Grep 등)는 `tool_input`의 `file_path`/`path`, 그 외(Bash/PowerShell)는 훅 JSON의 `cwd`. 상대경로는 `cwd` 기준 절대화. (엔진 `main()`이 `cwd`를 새로 추출해 `evaluate()`→ctx로 전달 — 기존 체크는 여분 ctx 키를 무시하므로 무회귀.)
 - `.git`이 파일이면(worktree/submodule) `gitdir:` 참조를 해소한다(best-effort).
@@ -601,7 +604,313 @@ S8.7이 "OS 탐지 → 훅 명령 선택 → 실행 검증"을 했듯, 아래도
 | `templates/enforce.template.py` | `check_repo_fresh_before_access` + git/마커 헬퍼 + `evaluate()`/`main()`의 `cwd`·`session_id` ctx 전달 |
 | `templates/invariants.template.yaml` | 불변식 `repo-fresh-before-access`(PreToolUse·warn·`requires:[keyed-state-dir]`) + 체크 id 문서 |
 | `agents/orchestrator/ORCHESTRATOR-AGENT.md` 책임 5 | pull-before-work 규율 노트(강제층 짝) |
+| `agents/orchestrator/ORCHESTRATOR-AGENT.md` 책임 7-INV | 디스패치 시 `record` 호출 규율 — 그 호출이 §14.8 재무장 지점이기도 하다(추가 행동 없음) |
 | 후속(follow-up) | 라이브 소크 후 block 승격(PreToolUse deny) · 오래된 `reposcan-*` 마커 GC(현재 ephemeral 휘발 의존) |
+
+---
+
+### 14.8 재무장(re-arm) — "세션 시작" 하나만으론 오래 사는 세션에서 무력해진다
+
+> **상태: IMPLEMENTED (가산 · 계약 v2 유지 · tier=warn 그대로).**
+
+#### 14.8.1 문제 — 실측된 사각지대
+
+도입판의 판정은 `fresh = FETCH_HEAD mtime >= 세션 앵커`이고, `reposcan-<세션>-<레포해시>` 마커로 **세션당 레포당 1회만** 발동했다. 여기엔 재무장 지점이 **"세션 시작" 하나뿐**이라는 구조적 결함이 있다 — **세션 초에 `git fetch` 한 번 하면 그 세션 내내 영원히 fresh 로 판정된다.**
+
+실측: 한 세션이 **7일째** 살아 있었다. 세션 앵커 9/15, 마지막 레포 마커 9/18. 그 사이 공유 상태 레포가 다른 주체에 의해 **21커밋 앞서 나갔는데 훅은 한 번도 다시 뜨지 않았다** — 이미 "이 세션에서 확인 완료" 상태였기 때문이다.
+
+**오래 사는 세션 × 다른 주체가 계속 쓰는 레포** = 정확히 가장 위험한 조합이 사각지대였다(공유 작업 데이터를 stale 한 채로 참조한다). 그리고 이 부류는 **틀려도 조용하다** — 가드레일이 안 뜨는 것은 에러로 드러나지 않는다(§2의 논리가 강제층 자신에게 되돌아온 사례).
+
+#### 14.8.2 고침 — 재무장 지점을 셋으로
+
+| # | 재무장 지점 | 무엇이 찍히나 | 왜 |
+|---|---|---|---|
+| ① | 세션 시작 | `reposcan-<세션>.anchor` (첫 매치 도구 실행 시 생성) | 도입판 그대로 — 새 세션은 처음부터 다시 묻는다 |
+| ② | **작업 아이템 개시** | `reposcan-<세션>.rearm` (없으면 글로벌 `reposcan.rearm`) | **핵심 고침.** 이 프레임워크엔 이미 작업 아이템 개시 지점이 있다 — 위임마다 찍는 write-helper `record`(§13.4). 그 지점을 재무장에 재사용하면 **pull-before-work 규율이 작업 단위로 자동 강제**된다. 오케스트레이터에 새 행동을 요구하지 않는다 |
+| ③ | **마커 TTL** | (파일 없음 — `now − ttl` 항) | 한 작업 아이템이 길어져도 일정 시간이 지나면 재검사가 걸린다. ②의 백스톱 |
+
+판정식:
+
+```
+deadline = max( 세션 앵커 , 재무장 epoch − grace , now − ttl )
+fresh    = FETCH_HEAD mtime >= deadline
+dedup    = fired 마커가 (mtime > 재무장 epoch) AND (찍힌 지 ttl 이내) 일 때만 억제
+```
+
+- **`− grace`** — 오케스트레이터의 자연스러운 순서는 `pull → record → 접근`이다. `record` 직전 수 분 안에 한 pull 을 stale 로 몰면 순전한 오탐이 된다. grace 는 그 창만 덮고, 실제로 낡은 pull(수십 분~며칠 전)은 그대로 걸러낸다.
+- **dedup 의 동률(tie)은 재판정 쪽으로 기운다** — 덜 검사하는 쪽으로 기울지 않는다(사각지대를 만든 것이 바로 그 방향이다).
+- **fired 마커를 지우고 다니지 않는다** — epoch 파일 하나를 앞으로 미는 것만으로 이전 창의 모든 마커가 한꺼번에 무효화된다. 원자적(파일 1개 touch)·스캔 불필요·다른 워커의 파일 무간섭(§13.5 per-key 격리 사상과 정합).
+
+#### 14.8.3 기본값과 근거
+
+| 값 | 기본 | 근거 |
+|---|---|---|
+| `ttl_minutes` | **90** | 1차 재무장은 ②(작업 아이템 개시)이고 TTL 은 그 백스톱이다. 통상 작업 아이템은 1시간 안쪽이라 90분이면 작업 *중간에* 다시 찌르지 않는다(소음 하한). 동시에 어떤 세션도 최대 90분마다 레포당 1회는 재판정을 받으므로 "며칠 사는 세션이 영원히 fresh"가 사라진다(사각지대 상한). warn tier·창당 레포당 1회라 오탐 비용은 한 줄 넛지뿐이다. `<=0` 이면 TTL 비활성(도입판 동작). |
+| `rearm_grace_minutes` | **5** | 위 `− grace` 근거. `pull → record → 접근` 의 현실적 간격(수 초~수 분)을 덮되, 그보다 오래된 pull 은 걸러낸다. |
+
+#### 14.8.4 공유 상태 레포 — 선언으로 더 짧은 TTL (엔진엔 레포 이름 없음)
+
+다른 주체가 계속 쓰는 공유 상태 레포에는 90분도 길다. 그래서 **per-repo TTL 오버라이드를 선언(yaml)에 둔다** — 어떤 레포가 그런 성격인지는 *배포가* 안다. 엔진엔 어떤 레포 이름도 박지 않는다(프로젝트·스택 중립).
+
+```yaml
+  - id: repo-fresh-before-access
+    options:
+      ttl_minutes: 90
+      rearm_grace_minutes: 5
+      repos:
+        - match: ["*/<공유-상태-레포-디렉토리명>"]   # 절대경로(구분자 '/')·basename 둘 다에 fnmatch
+          ttl_minutes: 10
+```
+
+`match` 는 문자열 하나 또는 목록. *첫 매치*가 이긴다. `options` 는 전부 선택이며, **모르는 키는 조용히 무시**된다.
+
+#### 14.8.5 읽기/쓰기 경계 (§13.4 Q4=B 준수)
+
+- **재무장 epoch 쓰기는 write-helper(`record`)에 있다** — 재무장은 *쓰기*이므로 쓰기 진입점에 둔다. CHECK 경로는 epoch 를 **읽기만** 한다.
+- CHECK 경로가 계속 touch 하는 것은 **도입판부터 그래 왔던 자기 전용 ephemeral 마커** — 세션 앵커(`reposcan-*.anchor`)와 fired 마커(`reposcan-*-<hash>`) — 뿐이다. 이 둘은 `reposcan-*` 자기 네임스페이스에 살고, 키드 work-item 레코드(`<key>.json`)와 active 포인터(`active-<sid>`)는 **여전히 CHECK 경로가 건드리지 않는다.** 즉 write-helper 의 단일-writer 경계(인덱스 포맷·스키마·유효 전이의 단일 원천)는 그대로다. 본 증분은 그 기존 관례를 따르되, *새로 생긴 쓰기*(epoch)는 write-helper 쪽에 넣었다.
+- 실패해도 예외를 올리지 않는다 — 재무장은 `record` 의 부가 효과이지 전제가 아니다. epoch 를 못 써도 `record` 는 정상 동작하고, 체크는 ①③으로 계속 판정한다.
+- `record` 응답 JSON 에 `rearmed`(경로 또는 null) 필드가 가산된다. 기존 `ok`/`message`/`record` 키는 불변.
+
+#### 14.8.6 스코프 — 세션 스코프 우선, 글로벌 폴백
+
+`record --session-id <sid>`(또는 env `AIDLC_SESSION_ID`)를 알면 `reposcan-<sid>.rearm` 만 찍어 **그 세션만** 재무장한다(정밀 — 다른 워커 무영향). 모르면 `reposcan.rearm` 을 찍어 이 `state_dir` 의 모든 세션이 재판정한다. 폴백이 *더 많이 검사하는* 쪽인 것은 의도적이다 — 이 결함의 원인이 "덜 검사하는 쪽으로 기운 기본값"이었다.
+
+#### 14.8.7 계약 — v2 유지 (순수 가산)
+
+체크 id 집합·`emit()` 훅 JSON 형태·키드 레코드 스키마·선결 조건이 모두 불변이다. `options` 는 **양방향 안전**하다: 구 yaml ↔ 신 엔진 = `options` 부재 → 기본값으로 동작(그래도 ②③이 살아 있어 사각지대는 닫힌다), 신 yaml ↔ 구 엔진 = `options` 를 모르는 키로 무시 → 도입판 동작 그대로. `tier: warn` 은 **그대로 둔다** — block 승격은 별개 사안이고, 재무장이 고쳐져야 warn 이라도 제때 뜬다.
+
+#### 14.8.8 검증 (실측 — 서브프로세스·실제 훅 호출 형태)
+
+| # | 확인한 것 | 결과 |
+|---|---|---|
+| 1 | **실측 재현** — 앵커 7일 전·fired 마커 4일 전·FETCH_HEAD 7일 전 | OLD **SILENT**(사각지대 재현) / NEW **WARN**("마지막 fetch 로부터 6일 지났습니다") |
+| 2 | **재무장 전후** — (1) 첫 접근 WARN → (2) 같은 세션 두 번째 접근 **SILENT**(마커) → `record` → (3) **WARN 재발동** | OLD 는 (3)에서도 SILENT / NEW 는 (3)에서 WARN. (4) pull 후 다음 `record` → SILENT |
+| 3 | **TTL** — 마커 20분·기본 90분 → SILENT / 같은 20분이지만 선언 TTL 10분인 레포 → WARN | 선언만으로 공유 상태 레포가 더 촘촘히 검사됨 |
+| 4 | **degraded** — state_dir 없음·yaml 없음·stdin 빈 입력·깨진 JSON·깨진 yaml·알 수 없는 이벤트 | 전부 **exit 0 · 무출력**. PyYAML 차단(미니 파서 폴백)에서도 크래시 없이 정상 판정 |
+| 5 | **키드 3종 무회귀** — 미기록 Task → PreToolUse deny / 기록 후 통과 / 열린 키 Stop block / 외부 조작 done Stop block / `stop_hook_active` warn 강등 / 무관한 키 SILENT / write-helper 미검증 done exit 2 | 전부 기존 동작 유지 |
+| 6 | **실제 훅 호출 형태**(`python enforce.py --event PreToolUse --base-dir <dlc-meta>` + 훅 JSON stdin)를 **라이브 배포**(앵커 167h·마커 166h인 실 세션, 마지막 fetch 24.5h 전인 실 레포)에 실행 | 설치본(main) **무출력** / 수정본 **WARN** → 재호출 SILENT → `record` 재무장 → **WARN 재발동**. 라이브 잔여물은 `close` + epoch 삭제로 0 |
+| 7 | 양 YAML 경로(PyYAML · stdlib 미니 파서)가 `options`(중첩 맵 + 인라인 맵 시퀀스)를 **동일 파싱** | IDENTICAL |
+
+---
+
+## 15. 사용자 오버레이 참조 강제 — `overlay-consulted-before-work`
+
+> **상태: IMPLEMENTED (도입 tier=warn · 계약 v2 유지 · 가산 체크 2종 — 관찰/게이트).** 엔진에 `check_overlay_read_observe`·`check_overlay_consulted_before_work` + 선언 해석 헬퍼가, 템플릿에 불변식 `overlay-consulted-before-work`가 추가됐다. 선언(`options.overlay`)이 없으면 **완전 no-op**이라 이 개념이 없는 배포엔 아무 영향이 없다.
+
+### 15.1 문제 — 공유 오버레이는 "읽게 만드는 장치"가 없으면 조용히 죽는다
+
+시스템의 팀 공유 장기 메모리(메타 레포)에는 성격이 다른 두 종류가 산다:
+
+| 종류 | 예 | 언제 읽나 |
+|---|---|---|
+| **사용자별 오버레이** — *에이전트 작동 방식*의 사용자별 최적화(작동 스타일·누적 교정 피드백) | `agents/<user>/` | **작업 개시 때마다** |
+| 맥락·인벤토리 | `cycles/`·`runs/`·`REPO-MAP.md`·`references/` | 필요할 때 그때그때 |
+
+오버레이를 *로컬이 아니라 공유 레포에* 두는 이유는 하나다 — **어떤 환경에서 에이전트가 뜨든 같은 사용자 최적화를 받게** 하는 것. 그런데 그 목적은 "작업 개시 시 그것을 읽는다"가 실제로 일어날 때만 성립하고, 그걸 강제하는 장치는 **아무것도 없었다**.
+
+실측된 실패: 한 사용자 오버레이가 2026-08-11 이후 갱신이 멈췄고, 그 사이 학습된 교정 피드백 21건이 전부 **에이전트의 머신 로컬 메모리**에 쌓였다. 공유의 이유가 정확히 그 지점에서 깨졌다 — 읽히지 않는 층은 갱신되지도 않는다(읽지 않으면 "이미 있는지"를 모르니 로컬에 다시 쓴다). §2의 논리 그대로 **강제층으로 승격**한다.
+
+**§14(git 최신성)와 목적이 다르다는 점이 핵심이다.** §14는 *"그 레포가 stale 한가"*(pull 했나)를 묻고, §15는 *"참조했는가"*(읽었나)를 묻는다. 그래서 **pull 만 하고 안 읽는 것은 통과시키지 않는다** — 판정 원천이 `FETCH_HEAD`가 아니라 **실제 읽기 관찰 마커**다.
+
+### 15.2 설계 — 관찰 마커 + 재무장 창
+
+- **판정**: `consulted = 읽기 마커 mtime >= deadline`, `deadline = max(세션 앵커, 재무장 epoch − grace)`.
+- **창(window) = 작업 아이템.** 재무장 epoch는 §14.8이 이미 만들어 둔 것이다 — write-helper `record`(§13.4에서 *디스패치마다* 찍는 그 지점)가 갱신한다. 그 창을 그대로 재사용하므로 의미는 **"작업 아이템마다 한 번은 오버레이를 읽어라"**가 된다. 새 메커니즘을 만들지 않고 기존 라이프사이클 seam에 얹는다.
+- **grace**(기본 5분)는 자연스러운 순서 *읽기 → record → 디스패치*에서 읽기가 record 직전이었던 경우를 오탐하지 않기 위한 여유다. 대가로 **grace 안에 연달아 시작한 작업 아이템은 직전 읽기를 승계**한다(실측 확인 — §15.8 V1.10). 재무장을 절대적으로 만들고 싶으면 선언에서 `grace_minutes: 0`으로 둔다.
+- **오탐 비용이 작다** — 경고를 받고 하는 일이 *작고 상한 있는 진입점 파일을 다시 읽는 것*이고, 그게 애초에 요구되는 행동 자체다. 한 번 읽으면 마커가 갱신돼 같은 창에선 조용하다(창당 1회).
+
+### 15.3 부착점·바인딩 — 키드 상태머신과 같은 seam
+
+디스패치 직전은 이미 강제 지점이다: `keyed-record-on-dispatch`(PreToolUse)가 거기 서 있고, 그 바로 앞에서 오케스트레이터가 `record`를 찍는다(책임 7-INV). **같은 seam을 쓴다** — 새 훅 이벤트도, 새 선결 조건도 필요 없다.
+
+| 바인딩 | 이벤트 | match | 체크 | 역할 |
+|---|---|---|---|---|
+| 관찰 | **PostToolUse** | 파일을 읽는 도구(Read·Grep·Bash·PowerShell …) | `overlay-read-observe` | 오버레이 파일을 가리킨 도구 호출을 보고 읽기 마커를 찍는다. **절대 위반을 내지 않는다**(순수 관찰) |
+| 게이트 | **PreToolUse** | 디스패치 도구(Task·Agent …) | `overlay-consulted-before-work` | 이번 창의 마커가 없으면 warn |
+
+- 관찰이 **PostToolUse**인 이유: 사후라 "읽기가 *실제로* 일어났다"가 참이다 — 거부·실패한 읽기가 충족으로 세지 않는다(덜 검사하는 쪽으로 기울지 않는다). 대신 **두 이벤트가 모두 배선돼 있어야** 한다(S8.8이 이미 Pre·Post·Stop 셋을 필수로 배선한다).
+- 관찰은 tool_input의 문자열 값들을 두 방식으로 본다: **꼬리 부분문자열**(절대/상대/POSIX-스타일 경로 표기를 가로지름) + **토큰 절대화 동치**(셸 명령 안의 상대 경로를 cwd 기준으로 절대화). 파일을 다시 열지 않는 순수 문자열·경로 연산이다.
+
+### 15.4 읽기/쓰기 경계 (§13.4 Q4=B 유지)
+
+CHECK 경로는 **키드 work-item 레코드와 active 포인터를 건드리지 않는다** — 그 쓰기는 여전히 write-helper 단독이다. 관찰이 찍는 것은 **자기 전용 ephemeral 마커 `overlayread-*`** 하나뿐이고, 이는 §14 도입판부터 CHECK 경로가 써 온 `reposcan-*`(세션 앵커·fired)와 **같은 부류이자 또 다른 네임스페이스**다. 즉 새로운 관례를 만든 것이 아니라 *기존 관례에 정확히 맞춘* 것이다. (현행 코드 대조로 확인: `_fresh_anchor_mtime`·`fired` 마커를 CHECK 경로가 `_touch` 한다.) 마커는 `state_dir`(gitignore·ephemeral)에 살아 언제 휘발해도 안전하다 — 휘발하면 재판정이 한 번 더 걸릴 뿐이다.
+
+### 15.5 중립·degraded·계약
+
+- **중립(agnostic)** — 엔진엔 **어떤 디렉토리명·파일명·사용자 이름도 박혀 있지 않다.** 오버레이 위치·필수 항목·사용자 식별자는 전부 선언(`options.overlay`) 또는 CLI(`--overlay-user`)/env(`AIDLC_OVERLAY_USER`)로 들어온다. 사용자 식별자는 *머신·사람별 값*이라 팀 공유 yaml이 아니라 **개인 settings의 훅 명령 인자**가 1차 채널이다(`--base-dir`와 같은 사상 — 훅엔 `env` 필드가 없다, §11.4/F1).
+- **미설정 → 조용히 SKIP** — `options.overlay` 없음 / `path`·`required` 없음 / 사용자 미식별 / 대상 파일이 하나도 존재하지 않음 → 전부 no-op. 프레임워크 템플릿은 **options를 주석으로만** 싣는다 → 기본 배포는 완전 no-op이고, SETTER가 STEP 2에서 배포에 맞춰 채운다(⑥).
+- **존재하지 않는 required 항목은 요구에서 빠진다** — 아직 만들지 않은 인덱스가 *영구 미충족*을 만들어 매 디스패치마다 경고하는 상황을 구조적으로 막는다.
+- **degraded-safe** — `requires: [keyed-state-dir]`, 그리고 state_dir 부재·yaml 부재·yaml 깨짐·stdin 빔·JSON 깨짐·앵커 확보 실패 무엇이든 크래시 없이 exit 0 · 무출력.
+- **계약 v2 유지 (가산)** — 체크 2종이 늘 뿐 기존 체크·`emit()` 훅 JSON·레코드 스키마 불변, 새 선결 조건 없이 기존 `keyed-state-dir` 재사용, 미지원 체크 id는 구 엔진이 `CHECKS.get`→None→조용히 스킵. 신·구 엔진↔yaml 혼용 안전(§14.5와 같은 사상).
+- **tier=warn 먼저** — 키드 3종·§14와 같은 롤아웃 규율. block 승격은 라이브 소크 후 별도 단계.
+
+### 15.6 컨텍스트 예산 — 인스턴스 쪽 짝 (강제와 구조는 한 쌍)
+
+강제가 "읽어라"라고 말하려면 **읽는 대상이 작고 상한이 있어야** 한다. 그래서 오버레이 자체를 2층으로 나눈다 — 이 구조와 §15의 충족 조건은 **정확히 일치해야 한다**(`required` = 항상 읽는 진입점 집합).
+
+| 계층 | 파일 | 언제 | 상한 |
+|---|---|---|---|
+| 진입점 | `agents/<user>/preferences.md` | **항상** (= `required`) | 6KB |
+| 인덱스 | `agents/<user>/feedback/INDEX.md` | **항상** (= `required`) | 6KB · 한 항목 = 한 줄 |
+| 상세 | `agents/<user>/feedback/<항목>.md` | 인덱스를 보고 **필요할 때만** | — |
+
+인덱스 패턴(작은 인덱스 + 지연 로드되는 상세)은 이미 검증된 구조다. **기록 측 규율**(무엇을 누적하는가)은 인스턴스의 `feedback/_README.md`가 정본이며 골자는: 새로운 내용일 때만 항목을 만들고, 기존 항목은 *방향이 바뀐 경우에만* 갱신하며, **일회성 예외는 기록하지 않는다** — 판정 기준은 *"다음에 같은 상황이 와도 또 적용되면 지속 지시(기록), '이번 건에 한해'라 그 작업이 끝나면 효력이 사라지면 일회성(기록 안 함)"*이다.
+
+### 15.7 한계·후속
+
+- **관찰은 도구 호출 문자열이 그 파일을 식별 가능하게 가리킬 때** 성립한다. 셸에서 `cd <오버레이 디렉토리>` 후 basename만 쓰면(그리고 훅 JSON의 `cwd`는 여전히 세션 cwd라) 관찰되지 않는다 — **안전 방향의 오검출**이다(경고가 한 번 더 뜰 뿐, 통과가 느슨해지지 않는다).
+- 후속: 라이브 소크 후 **block 승격** 검토 · 오래된 `overlayread-*`/`reposcan-*` 마커 GC(현재 ephemeral 휘발 의존) · 머신 로컬 메모리에 누적된 기존 교정 피드백의 **공유 오버레이로의 이관**(이번 증분 범위 밖 — 규율과 강제만 세웠다).
+
+### 15.8 검증 (서브프로세스 실측 + 라이브 파이어)
+
+| # | 케이스 | 결과 |
+|---|---|---|
+| V1.1 | 오버레이 미참조 + 디스패치(PreToolUse·Task) | **WARN** (`systemMessage` + `additionalContext`, exit 0) |
+| V1.2-3 | 오버레이 읽기(PostToolUse Read·Bash) | 무출력·exit 0 + 읽기 마커 2개 생성 |
+| V1.4 | 참조 후 디스패치 | **SILENT** |
+| V1.5-6 | `record`(재무장) 후 창 밖 읽기 상태로 디스패치 | **다시 WARN** |
+| V1.7 | 재무장 창 안에서 다시 읽고 디스패치 | SILENT |
+| V1.8 | 게이트는 디스패치 도구에만(Read엔 무발동) | 무발동 |
+| V1.9 | **pull 만 하고 안 읽음** | **여전히 WARN** (판정 원천이 다름) |
+| V1.10 | 재무장 직전(grace 안) 읽기 | SILENT (문서화된 승계) |
+| V2.1-2 | 선언 없는 배포(프레임워크 템플릿 기본값) | **조용히 SKIP** (게이트·관찰 둘 다 no-op) |
+| V2.3 | 사용자 미식별(`--overlay-user` 없음) | 그 체크만 SKIP |
+| V2.4 | `required` 대상 파일 전무 | SKIP(영구 미충족 방지) |
+| V3 | degraded 7종(state_dir 없음·yaml 없음·깨진 yaml·stdin 빔·깨진 JSON·BOM+깨진 JSON·바인딩 없는 이벤트) | 전부 exit 0 · 무출력 |
+| V3+ | PyYAML 차단(미니 파서 폴백) | 동일 WARN |
+| V4.1-4 | 키드 3종 무회귀(미기록 deny → record 후 allow · 검증 없는 done exit 2 · Stop block exit 2) | 그대로 |
+| V4.5-6 | §14 repo-fresh 무회귀(판정·`reposcan-*` 네임스페이스) | 그대로 |
+| VE.1-2 | PyYAML ≡ 미니 파서 (인스턴스 team.yaml · 템플릿) | 동일 |
+| VE.3 | CHECK 경로가 쓴 것 = ephemeral 마커뿐 | 확인(키드 레코드는 write-helper 산출) |
+| **LIVE** | **설치본 재설치 후 settings에 기록된 훅 command 문자열 verbatim + 실제 `--base-dir` + 훅 JSON stdin** | L1 WARN → L2 관찰 → L3 SILENT → L4 `record` 재무장 → L5 **다시 WARN**, 잔여물 0 |
+
+### 15.9 양방향 참조 (본 절 추가분)
+
+| 문서 | 관계 |
+|---|---|
+| `templates/enforce.template.py` | `check_overlay_read_observe`·`check_overlay_consulted_before_work` + `_overlay_*` 헬퍼 + `--overlay-user` CLI + `evaluate()`의 `base_dir`·`overlay_user` ctx |
+| `templates/invariants.template.yaml` | 불변식 `overlay-consulted-before-work`(PostToolUse 관찰 + PreToolUse warn 게이트 · `requires:[keyed-state-dir]` · `options.overlay` 주석 슬롯) + 체크 id 문서 |
+| §14.8 재무장 | 창의 원천 — `record`가 찍는 epoch 를 그대로 재사용(추가 행동 없음) |
+| §13.4 라이프사이클 | 부착 seam — 디스패치 직전 `record` + `keyed-record-on-dispatch` |
+| `agents/orchestrator/ORCHESTRATOR-AGENT.md` 책임 1 | 오버레이 참조 규율 노트(강제층 짝 — degraded 환경 상기용) |
+| `agents/SETTER.md` S8.8 | `options.overlay` ⑥ 적응 + 훅 명령의 `--overlay-user` 배선 |
+| 인스턴스 `dlc-meta/agents/_README.md`·`agents/<user>/feedback/_README.md`·`feedback/INDEX.md` | 컨텍스트 예산·기록 게이트·인덱스 형식(§15.6의 인스턴스 짝) |
+
+---
+
+## 16. 서브에이전트 역할 계약 강제 — `role-tools-match-on-dispatch`
+
+> **요약**: 역할별 도구의 단일 원천은 메타 레포의 **서브에이전트 카탈로그**이고, 실제 스폰에 그 값을
+> 반영하는 것은 **호출자(오케스트레이터)가 탐색 스텁 프론트매터를 채우는 행위**다. 그 사이를 아무도
+> 확인하지 않으면 원천과 스폰이 조용히 갈라진다. 이 불변식이 **위임 직전에 둘을 대조**한다.
+
+### 16.1 왜 — 조용히 틀리는 부류
+
+탐색 스텁(`{공유리포}/.claude/agents/dlc-role.md`)은 배포 고정물이 아니라 **위임마다 호출자가 쓰고
+갱신하는 파일**이다. 호출자는 카탈로그에서 그 역할의 도구를 읽어 `tools` 를 좁혀 채운다 — 그래서
+도구 제약은 *규율이 아니라 구조*로 지켜진다. 문제는 그 "채우는 행위"가 빠졌을 때다:
+
+- 프론트매터를 안 고치고 **이전 위임의 잔재**로 스폰하면, 읽기 전용이어야 할 역할에 **쓰기 도구가
+  딸려 간다.**
+- 이건 **에러가 나지 않는다.** 검증자가 코드를 고쳐도 다음 diff 를 볼 때까지 아무도 모른다.
+  ROUTING §4.2 의 판정 질문 *"틀렸을 때 사람이 알아채기 쉬운가"* 에 **아니오**로 답하는 자리다.
+
+규율("호출자가 성실히 채운다")은 선의에 기대는 층이다. 이 불변식이 그 선의를 **기계 검사**로 바꾼다.
+
+### 16.2 부착점 — 새 메커니즘을 만들지 않는다
+
+키드 상태머신·오버레이와 **같은 seam**이다 — 위임(디스패치) 직전 **PreToolUse**.
+`keyed-record-on-dispatch`(§13)가 이미 그 자리에 서 있고 `match` 관례(`["Task","Agent"]`, SETTER가
+⑥에서 실제 도구명으로 적응)도 그대로 재사용한다. 새 이벤트·새 저장소·새 선결 조건을 도입하지 않는다.
+
+### 16.3 검사 절차
+
+| # | 단계 | 실패 시 |
+|---|---|---|
+| 1 | 위임 지시에서 **역할 이름**을 얻는다 — 약속된 표기 `role: <이름>`(또는 `역할: <이름>`). 정규식은 `options.subagent_role.role_pattern` 으로 교체 가능 | §16.5 (역할 표기 없음) |
+| 2 | 카탈로그(`<base-dir>/subagents/CATALOG.md`)에서 그 역할 행의 **도구·티어**를 읽는다 | 카탈로그 부재·파싱 실패 → **SKIP** |
+| 3 | 탐색 스텁 프론트매터의 `tools`(선언이 `tier_models` 를 주면 `model` 도)를 읽는다 | 스텁 부재·프론트매터 파싱 실패 → **SKIP** |
+| 4 | **집합 비교.** 순서·공백은 무시. 카탈로그 `*` = 전체 → 스텁은 `tools:` 줄 자체가 없어야 한다 | 불일치 → **위반** |
+
+**카탈로그 표의 컬럼 순서는 계약이다** — `역할 | 정의 파일 | 도구 | 티어 | 설명`. 엔진은 *정의 파일
+셀이 `.md` 로 끝나는 행*만 취해 헤더·구분줄·설명 표를 자연히 거른다. 컬럼 순서를 바꾸면 계약 버전을
+올려야 하고, **행을 더하고 빼는 것은 계약 변경이 아니다**(역할 추가가 카탈로그 한 줄로 끝나는 근거).
+
+위반 메시지는 **무엇이 과다하고 무엇이 부족한지**를 이름으로 적는다 — 호출자가 메시지만 보고 고칠
+수 있어야 넛지가 값을 한다.
+
+### 16.4 읽기/쓰기 경계 — 엔진은 대신 고쳐 주지 않는다
+
+CHECK 경로는 **읽기 전용**이다(§13.4 Q4=B). 엔진이 프론트매터를 자동으로 맞춰 쓰면 편해 보이지만
+그 순간 **강제가 아니라 은폐**가 된다 — 호출자는 자기가 빠뜨렸다는 사실조차 모르게 되고, 카탈로그와
+스폰이 어긋난 채로도 영원히 조용해진다. 검사는 알리고, 고치는 것은 호출자 몫이다.
+이 체크는 마커도 쓰지 않는다(상태 없음) — `requires` 가 비어 있는 이유이기도 하다.
+
+### 16.5 degraded-safe — 조용히 SKIP
+
+아래는 **전부 exit 0 · 무출력**이다. 이 개념이 없는 배포에서 완전 no-op 이어야 하기 때문이다.
+
+| 상황 | 동작 |
+|---|---|
+| `options.subagent_role` 미선언 | SKIP |
+| 카탈로그 파일 없음 / 파싱 결과 행 0개 | SKIP |
+| 스텁 파일 없음 / 프론트매터 파싱 실패(첫 바이트가 `---` 아님·닫는 `---` 없음) | SKIP |
+| `--base-dir` 가 가리키는 곳이 없음 | SKIP |
+| 지시에 역할 표기가 없고, **스텁을 겨냥한 위임인지 단정할 수 없음** | SKIP |
+| 지시에 역할 표기가 없고, **스텁을 겨냥한 위임이 확인됨**(`options.subagent_role.stub_agent`) | **위반** — "역할을 명시하라" |
+| 지시가 지목한 역할이 **카탈로그에 없음** | **위반** — "정의 md + 카탈로그 한 줄을 만들고 진행하라"(ROUTING §4.3 (b)) |
+
+마지막 두 줄이 정책 결정이다. *역할 표기 없음*을 무조건 위반으로 하면 다른 서브 타입을 부르는 배포에서
+매 위임마다 뜬다 → `stub_agent` 가 선언됐고 이번 위임이 그것을 겨냥할 때만 발동한다. 이는 **표기를
+생략하면 검사를 피할 수 있다**는 뜻이기도 하다 — warn 단계에서는 감수하고, block 승격 시 재검토한다.
+
+### 16.6 tier — warn 먼저 (같은 seam 의 block 과 나란히 두는 근거)
+
+`keyed-record-on-dispatch` 는 같은 seam 에서 이미 **block** 이다. 그럼에도 이 체크를 **warn** 으로
+도입하는 이유는 **판정 원천의 성격이 다르기** 때문이다.
+
+| | `keyed-record-on-dispatch` | `role-tools-match-on-dispatch` |
+|---|---|---|
+| 판정 원천 | 엔진 자신이 쓴 상태 레코드 (형식이 엔진 소유) | **사람이 편집하는 마크다운 표 + 프론트매터** |
+| 오탐 여지 | 거의 없음 | 표기 흔들림·런타임 도구명 개편·컬럼 드리프트 |
+| 위반의 의미 | 상태머신에 구멍 — 진행시키면 안 됨 | 준비 누락 — 알리면 그 자리에서 고칠 수 있음 |
+| 오탐 1건의 비용 | 낮음(그 작업만) | **모든 위임이 막힘** |
+
+그래서 집안 롤아웃 규율(키드 3종 · §14 · §15와 동일)대로 **warn 으로 도입하고, 라이브 소크로 오탐률을
+실측한 뒤 block 승격을 별건으로 판단**한다. 위반 자체가 "조용히 틀리는 부류"이므로 승격 후보로서는
+강한 편이다 — 승격 시 §16.5 마지막 단락(표기 생략 회피 경로)도 함께 닫아야 한다.
+
+### 16.7 계약 v2 유지 — 순수 가산
+
+체크 1종이 늘 뿐 **기존 체크·`emit()` 훅 JSON·레코드 스키마가 전부 불변**이고, 새 선결 조건도 없다
+(`requires: []`). 구 엔진이 이 선언을 만나면 미지원 체크 id 로 no-op 스킵하고, 신 엔진이 구 yaml 을
+만나면 이 체크가 아예 선언되지 않아 역시 no-op 이다. **신·구 혼용 안전** → `INVARIANTS-CONTRACT: v2` 유지.
+
+### 16.8 검증 (실측)
+
+실제 훅 호출 형태(`--event PreToolUse --base-dir <메타 레포> --log-dir … --state-dir …` + 훅 JSON stdin)로
+서브프로세스 실행해 확인했다.
+
+- **일치 → 무출력**: 카탈로그와 같은 도구 / 카탈로그 `*` + `tools:` 줄 없음 / 순서만 다름(집합 비교).
+- **어긋남 → 발동**: 과다(검증자에 `Edit`·`Write` 딸려감) · 부족 · `tools:` 줄 없음 vs 카탈로그 제한 ·
+  카탈로그 `*` vs 프론트매터 좁힘 · 카탈로그에 없는 역할. 메시지에 과다/부족 도구 이름이 실린다.
+  **exit 0 · `deny` 없음** — warn 이므로 위임을 막지 않는다.
+- **degraded 5종 → exit 0 무출력**: 카탈로그 없음 · 카탈로그 파싱 실패 · 스텁 없음 · 프론트매터 파싱
+  실패 · `--base-dir` 부재.
+- **역할 표기 없음**: 스텁 겨냥 확인 시 발동 / 다른 서브 타입이면 SKIP.
+- **무회귀**: 키드 3종(미기록 → PreToolUse deny 유지, `record` 후 allow, K-ISO per-key 격리),
+  Stop + 빈 cycles → exit 0, `repo-fresh`·`overlay` 오탐 없음, `CHECKS` 레지스트리 = 기존 8 + 신규 1,
+  `INVARIANTS_CONTRACT == "v2"`, `py_compile` clean, 엔진 미니 YAML 파서로 선언 파싱 동일.
+
+### 16.9 양방향 참조
+
+| 파일 | 관계 |
+|---|---|
+| `templates/enforce.template.py` | 체크 구현 `check_role_tools_match_on_dispatch` + 헬퍼(`_role_*`) |
+| `templates/invariants.template.yaml` | 선언(PreToolUse · warn · `requires: []` · `options.subagent_role`) |
+| `templates/subagents/CATALOG.template.md` | 판정 원천 — 컬럼 순서 계약의 정본 |
+| `.claude/agents/dlc-role.md` | 대조 대상 — 프론트매터 `tools`·`model` 은 위임마다 갱신되는 자리 |
+| `agents/orchestrator/ROUTING.md` §4.3 | 이 검사가 강제하는 **위임 절차**(카탈로그 확인 → 없으면 생성 → 프론트매터 채움) |
 
 ---
 
@@ -630,5 +939,11 @@ STEP-3 구현(§13 — 키드 상태머신 강제화, **IMPLEMENTED · Phase 2 �
 STEP-3 Phase 3(§13 — 키드 warn→block 승격 + 라이프사이클 규율 이식, **IMPLEMENTED · block · 계약 v2 유지**): Phase 2(키드 warn 공존)에서 검증된 per-key 스코핑 위에, 키드 3종을 **block**으로 승격했다(cross-work-item 부작용 0 — 각 체크가 *그 키의 상태 파일만* 읽어 워커 B가 워커 A 때문에 막히지 않으므로 block-safe). **템플릿(`invariants.template.yaml`)**: 키드 3종 `tier: warn→block`, 이벤트를 실효 AND per-key-safe 지점으로 재바인딩 — (a)`keyed-record-on-dispatch`=**PreToolUse deny**(PostToolUse에서 이동, 실행 전 차단), (b)`keyed-valid-status-transition`=**Stop block** 백스톱(PostToolUse 바인딩 제거 — 사후 block은 자문뿐; 권위 강제는 write-helper exit-2), (c)`keyed-log-on-done`=**Stop block**. 전역 `cycle-must-log`는 warn 유지. **계약 v2 유지**(체크 id·스키마·`emit()` 훅 JSON 형태 불변 — tier/event만 바뀐 정책 변경, 엔진이 이미 block 지원 — bump 안 함, 근거 명시). **엔진(`enforce.template.py`) 무수정** — `emit()`이 PreToolUse block→`permissionDecision:deny`+exit 0 / Stop block→`decision:block`+exit 2 / Stop 재진입 `stop_hook_active`→warn 강등을 이미 낸다(서브프로세스 실측 재확인). **오케스트레이터 룰북**: `ORCHESTRATOR-AGENT.md` 책임 **7-INV**(라이프사이클 규율 — 디스패치=record+set-active/env / 지상검증 후=transition(done은 verified 필수) / CLOSE=CYCLE-END→push→close / 시작=reconcile · 재귀 계층별 소유 · 중립) + 참조맵 항목, `ROUTING.md` **§6.4**(라우팅 단계별 write-helper 대응 표 + per-key 무부작용). **SETTER S8.8**: (2.5) tier·이벤트를 Phase 3 block으로 갱신·PreToolUse (a) 명시, (3)/(4) 훅 배선에 `PreToolUse` 항목 필수화(JSON 스니펫·note), (5) 게이트 픽스처 K를 PreToolUse **deny** positive fixture로 교체 + **K-ISO**(K1 deny·K2 allow 공존 = per-key 무부작용 실측) 추가, S9 항목 17 갱신. **검증(서브프로세스 실측)**: block-per-key 격리(K1 미기록→deny / K2 기록→allow, 동일 state-dir 공존), keyed-log-on-done Stop block(done-without-log→block+exit2 / 로그 있으면 no-op), 무효 전이 write-helper exit 2, 전역 `cycle-must-log` warn 무회귀, 실제 dlc-meta `_open_cycles` READ-ONLY 정합, Stop-block+`stop_hook_active` 강등, degraded(state_dir 부재)→no-op exit 0, cp949-safe, `py_compile` clean, 양 파서 YAML 파싱. **라이브 파이어 확정(§11.4 (d))·CYCLE-LOG `Delegation:` 필드·GC user-notify는 여전히 follow-up.**
 
 STEP-4(§14 — git 최신성 강제 + 적응형 지식 상담, **IMPLEMENTED · warn · 계약 v2 유지**): 두 적응형 능력을 추가했다. **(A) `repo-fresh-before-access`(§14)**: `feedback-pull-before-work`를 강제층으로 승격 — 원격 있는 레포를 이번 세션에 git pull 없이 읽/작업하려 하면 warn(reference-read + 작업 레포 양쪽). 판정은 `.git/FETCH_HEAD` mtime vs 세션 앵커 mtime(네트워크 없는 stat), per-repo·per-session 마커(`<state_dir>/reposcan-*`)로 세션당 레포당 1회. 훅은 pull을 대신 실행하지 않는다(옵션 A). 원격 없음·비레포·git 최신화 명령 자체는 SKIP(중립). 엔진에 체크+헬퍼(`_accessed_path`/`_find_git_root`/`_git_dir`/`_has_remote`/앵커·마커) 추가, `evaluate()`/`main()`이 `cwd`·`session_id`를 ctx로 전달. 템플릿에 불변식(PreToolUse·warn·`requires:[keyed-state-dir]`). **계약 v2 유지**(가산 — §14.5). **(B) 적응형 지식 상담(`knowledge.consult_mode`)**: S5.8 지식-원천 개념을 확장 — 지식 부족 시 내부 지식 원천을 *임팩트 범위 내 타깃 질의*로만 상담(벌크 로드 금지·토큰 절약). 필수 설정 `consult_mode`(`auto`=자동 상담 / `ask-once`=상담 전 1회 확인, **기본 `ask-once`**), 단일 원천=`dlc-meta/ORCHESTRATOR.md` 지식-원천 섹션(사용자가 오케스트레이터에 지시해 언제든 auto↔ask-once 변경). SETTER S5.8이 온보딩 시 설정(Q5.8.7), 지식 미비/미사용이면 SKIP(deferred 기록) + 후일 사용자가 지식 추가 지시 시 보수 모드로 규율·훅 배선(S0·S5.8 deferral 경로). 이 능력은 config·규율 — 엔진 체크 불필요(순수 룰북+SETTER+ORCHESTRATOR.template). **검증**: 엔진 서브프로세스 실측(최신성 (i)stale→warn / (ii)마커·FETCH_HEAD 후 no-op / (iii)원격 없음 SKIP / (iv)비레포·degraded no-op / (v)`py_compile` / (vi)양 파서 tier=warn 동일), 키드 block 무회귀(deny + per-key 격리), 컨피그 정합(consult_mode auto/ask-once·기본 ask-once·deferral 존재).
+
+STEP-5(§14.8 — repo-fresh 재무장, **IMPLEMENTED · 가산 · 계약 v2 유지 · tier=warn 그대로**): `repo-fresh-before-access`가 오래 사는 세션에서 **구조적으로 무력해지던 것**을 고쳤다. 원인은 재무장 지점이 "세션 시작" 하나뿐이었던 것 — 세션 초 `git fetch` 한 번이 그 세션 내내 fresh 판정을 만들고, per-repo 마커가 재발동까지 막았다(실측: 7일 사는 세션, 앵커 9/15·마지막 마커 9/18, 그 사이 공유 상태 레포가 21커밋 전진했으나 훅 무발동 — 오래 사는 세션 × 다른 주체가 계속 쓰는 레포 = 가장 위험한 조합이 정확히 사각지대). 고침: **재무장 지점 3개**(① 세션 시작 ② **작업 아이템 개시** — write-helper `record`(§13.4 디스패치마다 찍는 그 지점)가 `reposcan-*.rearm` epoch 를 찍는다 ③ **마커 TTL**), 판정식 `deadline = max(앵커, epoch − grace, now − ttl)`, dedup 은 `마커 mtime > epoch AND ttl 이내`일 때만. 선언 `options{ttl_minutes(기본 90) · rearm_grace_minutes(기본 5) · repos[]{match, ttl_minutes}}` — **공유 상태 레포를 더 짧은 TTL 로 다루는 수단을 yaml 에 두고 엔진엔 어떤 레포 이름도 박지 않는다**(중립). 읽기/쓰기 경계 유지: epoch *쓰기*는 write-helper(`record`)에, CHECK 경로는 읽기만 + 도입판부터 써 온 자기 전용 `reposcan-*` 마커(앵커·fired)만 touch — 키드 레코드·active 포인터 무접촉(§14.8.5). **검증**(§14.8.8): 재무장 전후 OLD↔NEW 대조 실측(OLD 는 세션 내내 SILENT / NEW 는 작업 아이템 개시 후 재발동), TTL·선언 오버라이드 실측, degraded 6종 전부 exit 0·무출력(PyYAML 차단 미니 파서 폴백 포함), 키드 3종 + write-helper exit-2 무회귀, **실제 훅 호출 형태를 라이브 배포**(앵커 167h 실 세션·마지막 fetch 24.5h 전 실 레포)에 실행해 설치본 무출력 ↔ 수정본 WARN→dedup→재무장 WARN 재현(라이브 잔여물 0), 양 YAML 파서 `options` 동일 파싱. **범위 밖**: tier warn→block 승격(별개 사안 — 재무장이 고쳐져야 warn 이라도 제때 뜬다), 오래된 `reposcan-*` 마커 GC.
+
+STEP-6(§15 — 사용자 오버레이 참조 강제, **IMPLEMENTED · warn · 계약 v2 유지 · 가산 체크 2종**): 공유 장기 메모리의 *사용자별 오버레이*(작동 스타일·누적 교정 피드백)를 **작업 아이템 개시 전에 참조했는가**를 강제층으로 승격했다. 실측 배경: 한 사용자 오버레이가 2026-08-11 이후 갱신을 멈춘 채 학습된 교정 피드백 21건이 전부 에이전트의 머신 로컬 메모리로 샜다 — "어떤 환경에서 에이전트가 뜨든 같은 사용자 최적화를 받는다"는 공유의 이유가 정확히 그 지점에서 깨졌고, **작업 개시 시 그 층을 읽게 만드는 장치가 아무것도 없었다**. 부착점은 키드 상태머신과 **같은 seam**(위임 직전 — `record` + `keyed-record-on-dispatch`)이고, 창(window)은 §14.8이 이미 만든 **재무장 epoch** 를 그대로 재사용한다 → 의미가 "작업 아이템마다 한 번은 읽어라"가 된다. 판정 `consulted = 읽기 마커 mtime >= max(세션 앵커, 재무장 epoch − grace)`. **§14(최신성)와 목적이 다르다** — §14는 "stale 한가"(pull), §15는 "참조했는가"(read)라서 **pull 만 하고 안 읽으면 통과하지 않는다**(판정 원천이 FETCH_HEAD 가 아니라 실제 읽기 관찰 마커). 바인딩 2종: **관찰**(PostToolUse — 오버레이를 읽은 도구 호출을 보고 마커를 찍고 *절대 위반을 내지 않는다*; 사후라 "읽기가 실제로 일어났다"가 참) + **게이트**(PreToolUse·warn). **중립**: 엔진엔 디렉토리명·파일명·사용자 이름이 없고 전부 선언 `options.overlay{path('{user}' 치환)·required·grace_minutes·user}` + CLI `--overlay-user`/env 로 들어오며, **미설정이면 조용히 SKIP**(프레임워크 템플릿은 options 를 주석 슬롯으로만 실어 기본 배포가 완전 no-op). 존재하지 않는 `required` 항목은 요구에서 빠진다(영구 미충족 방지). **읽기/쓰기 경계 유지**(§15.4): CHECK 경로는 자기 전용 ephemeral 마커 `overlayread-*` 만 touch — 도입판부터 CHECK 이 써 온 `reposcan-*`(앵커·fired)와 같은 부류의 또 다른 네임스페이스이고, 키드 work-item 레코드·active 포인터는 여전히 write-helper 단독이다. **계약 v2 유지**(가산 — §15.5). **인스턴스 짝(컨텍스트 예산)**: 항상 읽는 범위를 `preferences.md` + 신설 `feedback/INDEX.md`(한 항목 = 한 줄 + 링크, 상세는 지연 로드)로 고정하고 둘 다 상한 6KB 를 명시 — `required` 집합과 정확히 일치시켰다. **기록 게이트**(feedback/_README.md): 새로운 내용일 때만 항목 추가 · 기존 항목은 *방향이 바뀐 경우에만* 갱신 · **일회성 예외는 기록하지 않는다**, 판정 기준 한 문장 = "다음에 같은 상황이 와도 또 적용되면 지속 지시(기록), '이번 건에 한해'라 그 작업이 끝나면 효력이 사라지면 일회성(기록 안 함)". **검증**(§15.8): 서브프로세스 실측 28종(미참조 WARN → 참조 SILENT → 재무장 후 다시 WARN · pull-만-하면 여전히 WARN · 선언 없는 배포 no-op · degraded 7종 exit 0 무출력 · PyYAML 차단 미니 파서 · 키드 3종/§14 무회귀 · 양 파서 동치) + **라이브 파이어**(설치본 재설치 후 settings 기록 훅 command verbatim + 실제 `--base-dir` + 훅 JSON stdin → WARN→관찰→SILENT→재무장→WARN 재현, 잔여물 0). **범위 밖**: block 승격(라이브 소크 후) · 마커 GC · 머신 로컬 메모리에 쌓인 기존 피드백의 공유 오버레이 이관.
+
+STEP-7(§16 — 서브에이전트 역할 계약 강제, **IMPLEMENTED · warn · 계약 v2 유지 · 가산 체크 1종**): 역할별 도구의 단일 원천(메타 레포 **서브에이전트 카탈로그**)이 **실제 스폰에 반영됐는지**를 아무도 확인하지 않던 구멍을 닫았다. 탐색 스텁(`.claude/agents/dlc-role.md`)은 배포 고정물이 아니라 *위임마다 호출자가 `tools` 를 좁혀 채우는 파일*이라 도구 제약이 구조로 지켜지는데, 그 "채우는 행위"가 빠지면 **이전 위임의 잔재로 스폰돼 읽기 전용이어야 할 역할에 쓰기 도구가 딸려 간다** — 에러가 나지 않고 다음 diff 를 볼 때까지 아무도 모르는 *조용히 틀리는 부류*. 부착점은 키드 상태머신·오버레이와 **같은 seam**(위임 직전 PreToolUse, `keyed-record-on-dispatch` 와 같은 `match` 관례) — 새 메커니즘·새 저장소·새 선결 조건 없음. 검사: ①지시에서 역할 이름(`role: <이름>` / `역할: <이름>`, `options.subagent_role.role_pattern` 으로 교체 가능) ②카탈로그 행의 도구·티어 ③프론트매터 `tools`(선언이 `tier_models` 를 주면 `model` 도) ④**집합 비교**(순서·공백 무시, `*` = 전체 → `tools:` 줄 부재여야 함). 카탈로그 컬럼 순서(`역할 | 정의 파일 | 도구 | 티어 | 설명`)가 계약이고 *행 추가·삭제는 계약 변경이 아니다*(역할 추가가 카탈로그 한 줄 + md 하나로 끝나는 근거). **읽기/쓰기 경계 유지** — CHECK 은 읽기 전용이고 프론트매터를 **대신 고쳐 쓰지 않는다**(고쳐 주면 강제가 아니라 은폐가 된다); 마커도 쓰지 않아 `requires: []`. **degraded-safe** — 선언 미설정·카탈로그/스텁 부재·파싱 실패·`--base-dir` 부재는 전부 조용히 SKIP(exit 0 무출력), 역할 표기 없음은 *스텁을 겨냥한 위임으로 확인될 때만* 발동(오탐 억제; 표기 생략이 회피 경로가 되는 점은 warn 단계에서 감수하고 block 승격 시 재검토). **tier=warn 먼저** — 같은 seam 의 `keyed-record-on-dispatch` 는 block 이지만 판정 원천이 엔진 소유 레코드인 반면 이쪽은 *사람이 편집하는 마크다운 표와 프론트매터*라 표기 흔들림·도구명 개편에서 오탐 여지가 있고, block 이면 오탐 1건이 *모든 위임*을 막는다(§16.6 대조표). **계약 v2 유지**(순수 가산 — 기존 체크·`emit()` 훅 JSON·레코드 스키마 불변, 신·구 혼용 안전). **검증**(§16.8): 실제 훅 호출 형태 서브프로세스 실측 — 일치 3종 무출력 / 어긋남 5종 발동(메시지에 과다·부족 도구 이름, exit 0·`deny` 없음) / degraded 5종 exit 0 무출력 / 역할 표기 없음 2분기 / 무회귀(키드 3종 deny·allow·K-ISO, Stop+빈 cycles, repo-fresh·overlay 무오탐, `CHECKS` = 기존 8 + 신규 1, `INVARIANTS_CONTRACT == v2`, `py_compile`, 미니 파서 동치). 짝이 되는 규율은 `ROUTING.md` §4.3(위임 절차 — 카탈로그 확인 → **없으면 사용자에게 묻고 만들어서 진행** → 프론트매터 채우고 호출). **범위 밖**: block 승격(라이브 소크 후) · 표기 생략 회피 경로 봉쇄 · SETTER (5) 게이트 픽스처 추가.
 
 향후 변경은 깃 PR/머지 (원칙 8).
