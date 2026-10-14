@@ -71,6 +71,8 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
 ## 빠른 시작 (Quickstart)
 
 > OS 무관 (macOS / Linux / Windows). 에이전트 런타임(예: Claude Code) + git이 필요하다.
+>
+> **먼저 갈림길부터.** 아래 1~5는 **새 시스템을 처음 만드는 경우**(시스템 최초 부트스트랩)의 흐름이다. **이미 돌아가는 팀 시스템에 새 팀원으로 합류**하는 거라면 시스템을 새로 만들지 않는다 — 팀에서 받은 공유 원격에서 기존 인스턴스를 받아 오는 길이 따로 있으니 **[`docs/JOINING.md`](docs/JOINING.md)** 를 먼저 읽는다(준비물·절차·자격증명 경계 전부 그쪽).
 
 1. **클론**
    ```sh
@@ -98,7 +100,8 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
 
 - **[`agents/`](agents/) — 행위 주체(에이전트) 룰북**
   - [`orchestrator/`](agents/orchestrator/) — 팀장. 코어 [`ORCHESTRATOR-AGENT.md`](agents/orchestrator/ORCHESTRATOR-AGENT.md) + 디테일 4개(`ROUTING` · `DECISIONS` · `ERROR-POLICY` · `TERMINATION`)
-  - [`SETTER.md`](agents/SETTER.md) — 시스템 최초 부트스트랩 (신규 생성 또는 기존 공유 원격 합류)
+    - 별도: [`RECURSIVE-DISPATCH.md`](agents/orchestrator/RECURSIVE-DISPATCH.md) — 재귀 디스패치 + 로컬 리뷰-머지-학습 루프의 **형식·룰 명세**(에이전트 룰북 아님, 코어표 비등재). 재귀 확장 + 이슈 트래커 운영 시에만 발동, 그 외엔 inert (조건부)
+  - [`SETTER.md`](agents/SETTER.md) — 시스템 부트스트랩·합류·보수 (모드는 S0)
   - [`REPO-SETTER.md`](agents/REPO-SETTER.md) — 각 레포에 AWS 룰셋 + Extension 설치
   - [`REPO-CREATOR.md`](agents/REPO-CREATOR.md) — 새 레포 생성
   - [`CICD-SETTER.md`](agents/CICD-SETTER.md) — 레포별 CI/CD 부착·통합 (기존 탐지 / 신규 생성, 조건부)
@@ -117,11 +120,15 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
   - [`DEPLOY-ADAPTER.md`](specs/DEPLOY-ADAPTER.md) — 환경 배포 룰: 환경 모델·전략·prod 사람 게이트·health·롤백 (**POLICY-DEPLOY**, 조건부)
   - [`ISSUE-TRACKER-ADAPTER.md`](specs/ISSUE-TRACKER-ADAPTER.md) — 사이클↔티켓 바인딩 룰 + 플랫폼 매핑 (**POLICY-ISSUE-TRACKING**, 조건부)
   - [`HARNESS-CATALOG.md`](specs/HARNESS-CATALOG.md) — 선택적 **하네스** 목록 (프레임워크를 바깥에서 구동하는 외부 시스템 — 목록만, 조건부)
+  - [`INVARIANT-ENFORCEMENT.md`](specs/INVARIANT-ENFORCEMENT.md) — 중대 절차를 훅이 프로그램으로 강제하는 불변식 규율 (**POLICY-INVARIANT**)
 
 - **[`templates/`](templates/) — 채워서 인스턴스를 찍어내는 원본**
   - 시스템·핸드오프: `ORCHESTRATOR` · `REPO-MAP` · `ISSUE-TRACKER`(조건부) · `HANDOFF` · `RETROSPECTIVE` · `SELF-CHECK`(개인 산출)
   - 레포 템플릿 7종: `CLAUDE` · `STACK` · `WORKFLOW` · `DESIGN` · `CHECKLIST` · `CODING` · `FRAMEWORK`
   - [`extensions/`](templates/extensions/) — 레포에 선택 적용하는 AWS Extension: `quality`(체크리스트) · `coding`(코딩 규칙) · `framework`(프레임워크 패턴)
+  - [`subagents/`](templates/subagents/) — 서브에이전트 역할 카탈로그(`CATALOG.template.md`) + 기본 역할 3종(`implementer` · `surveyor` · `verifier`). 불변식 강제 엔진·선언 템플릿(`enforce.template.py` · `invariants.template.yaml`)은 `templates/` 직하에 있다
+
+- **[`docs/`](docs/) — 사람이 읽는 가이드** — [`JOINING.md`](docs/JOINING.md): 이미 돌아가는 팀 시스템에 합류하는 절차
 
 > **공통 정책의 정본**은 [`SYSTEM-WORKFLOW.md §3.1`](specs/SYSTEM-WORKFLOW.md) — `POLICY-ENCODING` · `POLICY-TEMPLATE-ADHERENCE` · `POLICY-TRACKING`. 횡단 규율 `POLICY-VERIFY`는 [`VERIFICATION.md`](specs/VERIFICATION.md), `POLICY-RELEASE`는 [`CICD-RELEASE-ADAPTER.md`](specs/CICD-RELEASE-ADAPTER.md), `POLICY-DEPLOY`는 [`DEPLOY-ADAPTER.md`](specs/DEPLOY-ADAPTER.md), `POLICY-ISSUE-TRACKING`은 [`ISSUE-TRACKER-ADAPTER.md`](specs/ISSUE-TRACKER-ADAPTER.md)에 둔다. 전 에이전트가 같은 라벨 체계로 이를 참조한다.
 
@@ -133,6 +140,7 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
 - **지상검증 (claim ≠ evidence)** — "성공/완료/통과"는 클레임이지 증거가 아니다. 보고·진행 전에 가장 낮은 수준의 관찰 가능한 실제로 확인한다. 위험·비가역일수록 독립 검증자가 본다.
 - **자격증명 경계** — 시크릿은 `.env*`에서 읽기만. 추적 파일에 값 커밋 금지. 토큰 발급·접근제어 변경은 사람이 한다.
 - **선택적 휴먼 게이트(HITL)** — 위험·큰 영향·비가역·추가 레포·진화 제안 지점만 컨펌. 나머지는 AI 자율.
+- **불변식 강제 (POLICY-INVARIANT)** — 중대 절차(예: 사이클 로깅)는 "모델이 읽고 지키길 기대"하지 않고 **훅이 프로그램으로 강제**한다. 선언은 팀·개인 두 원천 yaml, 실행은 범용 엔진. 규율은 [`INVARIANT-ENFORCEMENT.md`](specs/INVARIANT-ENFORCEMENT.md).
 - **AWS 위임** — 레포 내부 구현은 직접 하지 않고 AWS AI-DLC에 위탁한다. 우리는 경계·계약·통합만 직접 담당한다.
 
 ---
@@ -145,8 +153,10 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
 | Stage 2 | 시스템 부트스트랩 + 오케스트레이터 + AWS 통합 | ✓ 완료 |
 | Stage 3 | EVOLUTION — 사용 패턴 학습 → 룰북 진화 제안 | ✓ 완료 |
 | Stage 4 | 협업 거버넌스 — 공유 원격 · 자격증명 경계 · 산출물 추적 | ✓ 완료 |
+| Stage 5 | 이슈 트래커 연동 — 적응형 어댑터(POLICY-ISSUE-TRACKING) · 사이클↔티켓 바인딩 · 멀티 플랫폼 | ✓ 완료 |
+| Stage 6 | 규율의 기계적 강제 — 불변식 엔진(POLICY-INVARIANT) · 키드 상태머신 · 서브에이전트 역할 카탈로그 | ✓ 완료 |
 
-> **현재:** 외부 공유 퍼블리시를 위한 **범용화·하드닝** — 공통 정책(POLICY-*) 도입, 검증 프로토콜·CI/릴리스·디자인 어댑터 보강. 라이프사이클이 이제 **환경 배포(검증·롤백)** 까지 포함해 *설계→배포* end-to-end로 닫힌다.
+> **현재:** 외부 공유 퍼블리시를 위한 **범용화·하드닝** — 공통 정책(POLICY-*) 도입, 검증 프로토콜·CI/릴리스·디자인 어댑터 보강. 라이프사이클이 이제 **환경 배포(검증·롤백)** 까지 포함해 *설계→배포* end-to-end로 닫힌다. 그 위에 **사이클↔티켓 바인딩**(Stage 5)과 **규율의 기계적 강제**(Stage 6 — 선언 yaml + 훅 엔진)가 얹혀, 반복 유실되던 절차가 문서 권고가 아니라 프로그램으로 지켜진다.
 
 - **OS-agnostic** — macOS / Linux / Windows. [`.gitattributes`](.gitattributes)가 EOL을 LF로 정규화한다.
 - **요구사항** — 에이전트 런타임(예: Claude Code) + git. AWS AI-DLC 룰셋은 부트스트랩 시 레포마다 가져온다(per-repo).
@@ -157,6 +167,7 @@ ai-dlc-orchestrator는 **특정 프로젝트·스택·OS에 묶이지 않는 범
 ## 더 보기
 
 - **[ai-dlc-orchestrator-overview.md](ai-dlc-orchestrator-overview.md)** — 더 깊은 소개·배경·멘탈 모델
+- **[docs/JOINING.md](docs/JOINING.md)** — 이미 돌아가는 팀 시스템에 합류하는 새 팀원용 가이드
 - **[CLAUDE.md](CLAUDE.md)** — 세션 진입점(부트스트랩) · 퀵스타트가 가리키는 곳
 - **[specs/SYSTEM-WORKFLOW.md](specs/SYSTEM-WORKFLOW.md)** — STEP 0~10 + 공통 정책 정본
 - **[agents/orchestrator/ORCHESTRATOR-AGENT.md](agents/orchestrator/ORCHESTRATOR-AGENT.md)** — 오케스트레이터 코어 룰북
