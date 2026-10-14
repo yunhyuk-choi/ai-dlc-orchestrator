@@ -180,6 +180,11 @@ dlc-meta/cycles/
   Output paths: [path1, path2, ...]
 ```
 
+**마커 규율 — 한 줄에 마커 하나** — 엔진은 줄 앞머리의 타임스탬프 브래킷에 앵커해 **그 줄에서 마커를 하나만** 읽고, `CYCLE-START`/`CYCLE-REOPEN`/`CYCLE-END` 를 순차 상태머신으로 판정한다. 그래서 당일에 끝난 짧은 사이클이라도 `[ts] CYCLE-START / CYCLE-END` 처럼 **한 줄에 합쳐 적으면 `CYCLE-START` 로만 인식돼 그 사이클이 영원히 열린 채 남는다** — 매 `reconcile` 마다 그 키가 되살아난다. **`CYCLE-END` 는 아무리 짧아도 자기 entry 블록으로** 적는다(§4.1 구조 그대로).
+
+- **진단 함정** — `grep -c CYCLE-END` 는 합쳐 적은 줄에도 매칭돼 「END 있음」이라는 **거짓 안심**을 준다. 열림/닫힘 판정은 grep 이 아니라 **엔진 함수에 파일을 먹여서** 한다.
+- **복구** — 별도 `CYCLE-END` entry 를 append → push → `enforce.py close --work-key {키}` → `reconcile` 로 열린 사이클 0 확인.
+
 ### 5.1 append-live 원칙 — *작업하면서* 기록 (사후 재구성 금지)
 
 audit.md는 **사후 보고서가 아니라 진행 중 실시간 기록(running record)**.
