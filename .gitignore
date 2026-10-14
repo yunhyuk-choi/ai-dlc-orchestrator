@@ -7,8 +7,14 @@
 
 # Session self-check injection text — generated per machine by SETTER S8.7 from
 # templates/SELF-CHECK.template.md (the tracked single source). PERSONAL artifact:
-# it is regenerated locally, never shared (POLICY-TRACKING).
-.claude/orchestrator-selfcheck.txt
+# it is regenerated locally, never shared (POLICY-TRACKING). The glob also covers
+# the router-mode variant, which SETTER generates alongside it on a router clone.
+.claude/orchestrator-selfcheck*.txt
+
+# Router-mode marker — written per machine to make THIS clone a top-level router
+# (no meta repo of its own). Whether a clone is used that way is a personal choice,
+# so it is PERSONAL by construction, never shared (POLICY-TRACKING).
+.claude/dlc-router.txt
 
 # Meta repo location marker — written per machine by SETTER S6.5 so the next
 # session can tell whether the system is bootstrapped without re-asking the user.
